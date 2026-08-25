@@ -6,15 +6,15 @@ This repository is a new project. `/home/aaron/Repo/data-warehouse` is a frozen 
 
 ## Status
 
-The local vertical slice and the first remote adapters are implemented and covered by module tests. The scanner can enumerate local files or S3-compatible objects, extract FITS/catalog coverage through a shared content seam, write the fixed Elasticsearch indices, and the query service can read coverage candidates and resolve FileAssets. A live OSS/Elasticsearch verification still requires deployment endpoints and credentials.
+The local vertical slice and remote adapters are implemented and covered by module tests. The scanner can enumerate local files or S3-compatible objects, extract FITS/catalog coverage through a shared content seam, write the fixed Elasticsearch indices, and the query service can read coverage candidates and resolve FileAssets. A disposable OSS/Elasticsearch integration run has verified the current WCS footprint, strict mapping, stable upserts, point/cone/HEALPix queries, and cursor pagination. External Elasticsearch is the default deployment mode; a bundled instance remains optional.
 
-The build has four runtime modules plus one shared remote adapter (the Kubernetes Operator is planned but not yet a Maven module):
+The build has five runtime modules plus one shared remote adapter:
 
 - `spatial-core`: astronomy domain types, HEALPix/WCS calculations, plan validation, index documents, and query-cell normalization.
 - `index-elasticsearch`: JDK HTTP Elasticsearch writer/reader for the two fixed indices.
 - `scanner-cli`: local and S3-compatible source enumeration, in-process Handler pipeline, and scan execution.
 - `query-api`: a small read-only HTTP service for point, cone, and HEALPix searches.
-- `operator`: a thin Kubernetes adapter that creates scanner Jobs and reports status. It is in product scope but contains no scanning logic.
+- `operator`: a thin Kubernetes adapter that creates scanner Jobs from `ScanRequest` resources and reports status. It contains no scanning logic.
 
 ## Read Next
 
@@ -26,6 +26,7 @@ The build has four runtime modules plus one shared remote adapter (the Kubernete
 - `docs/scan-plan.md`: scanner input contract.
 - `docs/index-contract.md`: Elasticsearch document and spatial semantics.
 - `docs/query-api.md`: query endpoints and pagination.
+- `docs/operator.md`: ScanRequest, Job translation, status, and credential-reference contract.
 - `docs/implementation-plan.md`: staged delivery plan and verification gates.
 - `docs/adr/`: decisions that should not be rediscovered during implementation.
 

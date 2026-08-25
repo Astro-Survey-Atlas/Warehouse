@@ -84,11 +84,16 @@ The query API depends on `spatial-core` and the read side of `index-elasticsearc
 
 It owns:
 
-- An astronomy-specific scan request CRD when Kubernetes submission is introduced.
+- An astronomy-specific `ScanRequest` CRD at `atlas.zhejianglab.org/v1alpha1`.
 - Plan validation delegation and Connector/credential reference validation.
 - Scanner Job creation from a canonical ScanPlan.
 - Job status observation and task status mapping.
 - Retry, concurrency, and resource cleanup policy for the Kubernetes execution resource.
+
+The initial adapter uses a plan-hash-named immutable ConfigMap plus one scanner
+Job per plan version. Credential references are projected into the Job through
+Secret references or read-only Secret volumes; the Operator has no Secret read
+permission.
 
 It does not own:
 

@@ -29,7 +29,7 @@ Astro Survey Atlas Warehouse owns the narrow loop that turns astronomical files 
 | Storage lifecycle | No source reconciliation, deletion detection, tombstones, or garbage collection in MVP |
 | Raw data movement | No object copying, conversion, or archival; indexing references source URIs |
 | Catalog rows | No one-document-per-row object index in MVP |
-| Infrastructure ownership | S3, OSS, Elasticsearch, Kubernetes, and ingress controls remain external infrastructure; this project integrates with them |
+| Infrastructure ownership | S3, OSS, Kubernetes, and ingress controls remain external infrastructure; Elasticsearch is external by default, with an optional bundled chart planned for dedicated deployments |
 | Identity | No application user directory or authorization model inside the query process |
 | Legacy migration | No in-place changes to `/home/aaron/Repo/data-warehouse` and no runtime compatibility promise for its historical CRDs |
 

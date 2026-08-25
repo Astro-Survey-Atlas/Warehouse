@@ -108,6 +108,17 @@ public final class ElasticsearchAdapter implements IndexWriter, IndexReader, Aut
         ElasticsearchIndexTemplates.coverageTemplate());
   }
 
+  /**
+   * Explicitly recreates only the two product indices for a disposable test or a
+   * planned migration. Scanner startup never calls this method.
+   */
+  public void recreateFixedIndices() {
+    deleteIndex(IndexContract.FILE_INDEX);
+    deleteIndex(IndexContract.COVERAGE_INDEX);
+    createSingleNodeIndex(IndexContract.FILE_INDEX);
+    createSingleNodeIndex(IndexContract.COVERAGE_INDEX);
+  }
+
   /** Verifies that both fixed indices exist and contain the required field types. */
   public void verifyIndexMappings() {
     verifyMapping(IndexContract.FILE_INDEX, ElasticsearchIndexTemplates.fileMappings());
@@ -272,6 +283,39 @@ public final class ElasticsearchAdapter implements IndexWriter, IndexReader, Aut
       throw new IllegalStateException("Elasticsearch index template request interrupted", exception);
     } catch (IOException exception) {
       throw new IllegalStateException("Elasticsearch index template request failed", exception);
+    }
+  }
+
+  private void deleteIndex(String index) {
+    try {
+      HttpResponse<String> response = client.send(
+          request("DELETE", "/" + index, null).build(),
+          HttpResponse.BodyHandlers.ofString());
+      if (response.statusCode() >= 300 && response.statusCode() != 404) {
+        throw new IllegalStateException("Elasticsearch index deletion failed with status " + response.statusCode());
+      }
+    } catch (InterruptedException exception) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("Elasticsearch index deletion interrupted", exception);
+    } catch (IOException exception) {
+      throw new IllegalStateException("Elasticsearch index deletion failed", exception);
+    }
+  }
+
+  private void createSingleNodeIndex(String index) {
+    try {
+      Map<String, Object> body = Map.of("settings", Map.of("number_of_replicas", 0));
+      HttpResponse<String> response = client.send(
+          request("PUT", "/" + index, mapper.writeValueAsString(body)).build(),
+          HttpResponse.BodyHandlers.ofString());
+      if (response.statusCode() >= 300) {
+        throw new IllegalStateException("Elasticsearch index creation failed with status " + response.statusCode());
+      }
+    } catch (InterruptedException exception) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("Elasticsearch index creation interrupted", exception);
+    } catch (IOException exception) {
+      throw new IllegalStateException("Elasticsearch index creation failed", exception);
     }
   }
 

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.zhejianglab.astro.atlas.core.CoordinateFrame;
 import org.zhejianglab.astro.atlas.core.CoverageMethod;
@@ -48,6 +49,46 @@ class QueryServiceTest {
     assertEquals(1, response.items().size());
     assertEquals(fileId, response.items().get(0).fileId());
     assertEquals(2, response.items().get(0).matchingCoverage().size());
+  }
+
+  @Test
+  void fillsUniqueFileLimitAcrossCoveragePages() {
+    String firstUri = "s3://survey/first.fits";
+    String secondUri = "s3://survey/second.fits";
+    String firstId = SourceIdentity.fileId(firstUri);
+    String secondId = SourceIdentity.fileId(secondUri);
+    long firstCell = Healpix.ang2pixNest(8, 180.25, -2.5);
+    long secondCell = Healpix.ang2pixNest(8, 181.25, -2.5);
+    FileAsset firstFile = file(firstId, firstUri, "first.fits", firstCell);
+    FileAsset secondFile = file(secondId, secondUri, "second.fits", secondCell);
+    SpatialCoverage firstCoverage = coverage(firstId, firstUri, firstCell);
+    SpatialCoverage secondCoverage = coverage(secondId, secondUri, secondCell);
+    AtomicInteger calls = new AtomicInteger();
+
+    QueryService service = new QueryService(new IndexReader() {
+      @Override
+      public Page<SpatialCoverage> searchCoverage(Collection<Long> cells, int limit, String cursor) {
+        calls.incrementAndGet();
+        return cursor == null
+            ? new Page<>(List.of(firstCoverage, firstCoverage), "next")
+            : new Page<>(List.of(secondCoverage), null);
+      }
+
+      @Override
+      public Collection<FileAsset> findFiles(Collection<String> ids) {
+        return ids.contains(secondId) ? List.of(firstFile, secondFile) : List.of(firstFile);
+      }
+    });
+
+    FileSearchResponse response = service.search(new PointQuery(180.25, -2.5, 2, null));
+
+    assertEquals(2, response.items().size());
+    assertEquals(2, calls.get());
+  }
+
+  private static FileAsset file(String fileId, String uri, String name, long cell) {
+    return new FileAsset(fileId, uri, name, "s3://survey", FileType.FITS, 10L, null,
+        Modality.of("image"), SpatialStatus.KNOWN, List.of(cell), java.time.Instant.now());
   }
 
   private static SpatialCoverage coverage(String fileId, String uri, long cell) {

@@ -60,14 +60,14 @@ Completion criterion: an integration test indexes fixture documents, calls every
 
 Deliver:
 
-- Astronomy-specific scan request CRD, with the exact kind and API version chosen from the stable ScanPlan contract.
+- Astronomy-specific `ScanRequest` CRD at `atlas.zhejianglab.org/v1alpha1`.
 - Reconciler that validates references and creates a scanner Job.
 - Secret reference propagation without copying secret values into CR status or logs.
 - Job status mapping and scanner summary propagation.
 - Explicit retry, concurrency, and cleanup policy for the Job resource.
-- Helm packaging and RBAC for the Operator and scanner Job.
+- Kubernetes manifests, container runner packaging, and RBAC for the Operator and scanner Job.
 
-Completion criterion: a Kubernetes integration test or an environment-gated test submits one scan request, observes a scanner Job, and verifies terminal status while all spatial behavior remains covered by `spatial-core` tests.
+Completion criterion: pure module tests verify plan translation, Secret projection, Job translation, status mapping, and summary extraction; checked-in manifests submit one scan request and observe a scanner Job. A live cluster integration test remains environment-gated.
 
 ## Phase 5: Deployment Hardening
 
@@ -79,7 +79,9 @@ Deliver:
 - Resource, timeout, and bulk settings.
 - Operational runbook and failure diagnosis.
 
-Completion criterion: a clean environment can install and verify the strict templates, deploy the query API and Operator, run a fixture or configured scan, and query the new indices without touching the legacy repository or legacy indices. The template and verification implementation is now present in `index-elasticsearch`; deployment manifests and the Operator remain future work.
+The default deployment mode is external Elasticsearch to keep the initial footprint small. A bundled Elasticsearch subchart is optional and should be enabled only when a dedicated namespace and persistent resources are available.
+
+Completion criterion: a clean environment can install and verify the strict templates, deploy the query API and Operator, run a fixture or configured scan, and query the new indices without touching the legacy repository or legacy indices. The template and verification implementation, container runner packaging, Operator manifests, and a live scanner Job smoke path are now present; query API deployment and optional Helm packaging remain hardening work.
 
 ## Reuse From Legacy
 

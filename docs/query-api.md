@@ -79,6 +79,7 @@ The API does not return credentials, authorization headers, or arbitrary indexed
 - `nextCursor` encodes the Elasticsearch `search_after` state and query identity.
 - A cursor cannot be reused with a different query. The API rejects mismatched cursor parameters.
 - Deep `from/size` pagination is not supported.
+- The requested `limit` applies to unique FileAsset results. Because one file may have many matching coverage cells, the service may consume multiple coverage pages internally before returning a page; `nextCursor` represents the last coverage page consumed.
 
 ## Validation
 

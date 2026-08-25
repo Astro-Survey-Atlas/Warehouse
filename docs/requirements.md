@@ -120,11 +120,11 @@ The scanner is callable as a CLI with plan JSON. The same scanner can run locall
 ## Implementation Decisions
 
 - The repository uses Java 17 and Maven.
-- The initial repository is a Maven multi-module build with `spatial-core`, `scanner-cli`, `query-api`, and a later `operator` module.
+- The initial repository is a Maven multi-module build with `spatial-core`, `scanner-cli`, `query-api`, and `operator`.
 - `spatial-core` owns domain types, plan validation, HEALPix normalization, WCS/catalog spatial extraction contracts, index documents, and query-cell conversion.
 - `scanner-cli` owns enumeration, the in-process Handler pipeline, record production, and Elasticsearch bulk writing.
 - `query-api` owns HTTP parsing, validation, cursor encoding, and read-only Elasticsearch search.
-- `operator` owns Kubernetes CRD/reconcile/Job translation only. Its scan input is the same canonical ScanPlan used by the scanner.
+- `operator` owns the `ScanRequest` Kubernetes resource, CRD/reconcile/Job translation only. Its scan input is the same canonical ScanPlan used by the scanner.
 - The scanner has one source and one sink per run.
 - Connector describes how to connect. A ScanPlan describes the concrete source location and output location. The MVP does not require a Connector CRD or an external Connector registry.
 - Handlers are compiled into the scanner process. There is no per-Handler image, plugin loader, user script, DAG, or intermediate workflow store.

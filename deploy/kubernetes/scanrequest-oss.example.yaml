@@ -1,0 +1,57 @@
+apiVersion: atlas.zhejianglab.org/v1alpha1
+kind: ScanRequest
+metadata:
+  name: survey-release-1
+  namespace: atlas
+spec:
+  scanner:
+    image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.1.0
+    backoffLimit: 1
+    activeDeadlineSeconds: 86400
+    ttlSecondsAfterFinished: 86400
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: "2"
+        memory: 4Gi
+  credentials:
+    source:
+      secretName: atlas-source-credentials
+      accessKeyKey: accessKey
+      secretKeyKey: secretKey
+    sink:
+      secretName: atlas-elasticsearch-credentials
+      usernameKey: username
+      passwordKey: password
+  plan:
+    version: 1
+    source:
+      connector:
+        type: oss
+        endpoint: https://oss.example.invalid
+        credentialRef:
+          accessKeyEnv: ATLAS_SOURCE_ACCESS_KEY
+          secretKeyEnv: ATLAS_SOURCE_SECRET_KEY
+      location:
+        bucket: survey-data
+        prefix: release-1/
+    filters:
+      includeSuffixes:
+        - .fits
+        - .fit
+        - .csv
+        - .tsv
+    handlers:
+      - default
+      - fits
+      - catalog
+      - coverage
+    sink:
+      connector:
+        type: elasticsearch
+        endpoint: https://elasticsearch.example.invalid:9200
+        credentialRef:
+          usernameEnv: ATLAS_ES_USERNAME
+          passwordEnv: ATLAS_ES_PASSWORD

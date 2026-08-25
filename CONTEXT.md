@@ -22,6 +22,10 @@ A source item presented to the processing pipeline. In the MVP it is normally a 
 
 The complete intent for one indexing run: source connection and location, file filters, handler order, optional modality metadata, and the output connection. A ScanPlan is finite and one-shot.
 
+## ScanRequest
+
+A Kubernetes-native submission of one ScanPlan. A ScanRequest names credential references and execution policy, and represents the scanner Job and its observable run status without owning scientific processing.
+
 ## Connector
 
 A reusable description of how to connect to a storage or index system. A Connector supplies connection details and credentials by reference. A ScanPlan supplies the concrete source location or output location used by that run.

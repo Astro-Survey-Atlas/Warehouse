@@ -93,6 +93,7 @@ Coverage records are de-duplicated before writing. A CSV/TSV with many rows in o
 - The writer does not delete documents because a source item is absent from a later scan.
 - The Elasticsearch adapter exposes explicit composable templates for both fixed indices. They use `dynamic=strict`, map identifiers and categorical fields as `keyword`, dates as `date`, sizes and HEALPix cells as numeric fields, and reject undeclared fields.
 - Template installation is deployment-owned and does not create indices or rewrite an existing mapping. The adapter can verify that both existing indices contain the required strict mapping; an incompatible index must be rebuilt or migrated explicitly before scanning.
+- `recreateFixedIndices()` is an explicit index-admin operation for disposable integration environments or approved migrations. It is never invoked by scanner startup.
 
 ## Query Join
 

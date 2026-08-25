@@ -154,6 +154,28 @@ class ElasticsearchAdapterTest {
   }
 
   @Test
+  void recreatesOnlyFixedIndicesWithZeroReplicas() throws Exception {
+    List<String> paths = new ArrayList<>();
+    HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext("/", exchange -> {
+      paths.add(exchange.getRequestMethod() + " " + exchange.getRequestURI().getPath());
+      exchange.getRequestBody().readAllBytes();
+      respond(exchange, "{\"acknowledged\":true}");
+    });
+    server.start();
+    try (ElasticsearchAdapter adapter = new ElasticsearchAdapter("http://127.0.0.1:" + server.getAddress().getPort(), null, null)) {
+      adapter.recreateFixedIndices();
+      assertEquals(List.of(
+          "DELETE /ast_file_index_v1",
+          "DELETE /ast_coverage_index_v1",
+          "PUT /ast_file_index_v1",
+          "PUT /ast_coverage_index_v1"), paths);
+    } finally {
+      server.stop(0);
+    }
+  }
+
+  @Test
   void reportsPermanentBulkItemIdsWithoutExposingCredentials() throws Exception {
     String sourceUri = "s3://survey/bad.fits";
     FileAsset file = file(sourceUri);

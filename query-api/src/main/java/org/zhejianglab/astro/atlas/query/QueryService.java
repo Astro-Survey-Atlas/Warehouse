@@ -21,11 +21,19 @@ public final class QueryService {
 
   public FileSearchResponse search(SpatialQuery query) {
     if (query == null) throw new IllegalArgumentException("query is required");
-    Page<SpatialCoverage> coveragePage = reader.searchCoverage(query.order8Cells(), query.limit(), query.cursor());
     Map<String, List<MatchingCoverage>> matchingByFile = new LinkedHashMap<>();
-    for (SpatialCoverage coverage : coveragePage.items()) {
-      matchingByFile.computeIfAbsent(coverage.sourceFileId(), ignored -> new java.util.ArrayList<>())
-          .add(MatchingCoverage.from(coverage));
+    String cursor = query.cursor();
+    String nextCursor = null;
+    while (true) {
+      Page<SpatialCoverage> coveragePage = reader.searchCoverage(query.order8Cells(), query.limit(), cursor);
+      for (SpatialCoverage coverage : coveragePage.items()) {
+        matchingByFile.computeIfAbsent(coverage.sourceFileId(), ignored -> new java.util.ArrayList<>())
+            .add(MatchingCoverage.from(coverage));
+      }
+      nextCursor = coveragePage.nextCursor();
+      if (matchingByFile.size() >= query.limit() || nextCursor == null) break;
+      if (nextCursor.equals(cursor)) throw new IllegalStateException("coverage cursor did not advance");
+      cursor = nextCursor;
     }
 
     Collection<FileAsset> files = reader.findFiles(matchingByFile.keySet());
@@ -36,7 +44,7 @@ public final class QueryService {
         .filter(entry -> filesById.containsKey(entry.getKey()))
         .map(entry -> FileSearchItem.from(filesById.get(entry.getKey()), entry.getValue()))
         .toList();
-    return new FileSearchResponse(items, query.limit(), coveragePage.nextCursor());
+    return new FileSearchResponse(items, query.limit(), nextCursor);
   }
 
   public boolean isReady() {

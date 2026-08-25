@@ -37,7 +37,21 @@ The scanner accepts a plan file:
 mvn -pl scanner-cli -am \
   org.codehaus.mojo:exec-maven-plugin:3.5.0:java \
   -Dexec.mainClass=org.zhejianglab.astro.atlas.scanner.Main \
-  -Dexec.args="--plan plan.json"
+   -Dexec.args="--plan plan.json"
 ```
+
+The checked-in `docs/live-oss-plan.json` is a credential-free OSS integration plan for the supplied test prefix. It expects the two access variables to be exported from `.env` and uses the local Elasticsearch port-forward address `http://127.0.0.1:19200`.
+
+For explicit index bootstrap, run the `index-elasticsearch` `IndexAdminMain` with `--install --recreate --verify`. `--recreate` is destructive and is intended only for a disposable test index or an approved migration window:
+
+```text
+mvn -f index-elasticsearch/pom.xml \
+  org.codehaus.mojo:exec-maven-plugin:3.5.0:java \
+  -Dexec.mainClass=org.zhejianglab.astro.atlas.es.IndexAdminMain \
+  -Dexec.classpathScope=runtime \
+  -Dexec.args="--endpoint http://127.0.0.1:19200 --install --recreate --verify"
+```
+
+The current deployment policy is external Elasticsearch by default. A future project Helm chart may enable an optional single-node Elasticsearch subchart when dedicated resources are available; scanner and query code do not depend on that topology.
 
 The modules currently build regular Maven jars; deployment packaging and a shaded distribution remain a later step.
