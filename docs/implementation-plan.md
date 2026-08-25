@@ -79,7 +79,7 @@ Deliver:
 - Resource, timeout, and bulk settings.
 - Operational runbook and failure diagnosis.
 
-Completion criterion: a clean environment can deploy the query API and Operator, run a fixture or configured scan, and query the new indices without touching the legacy repository or legacy indices.
+Completion criterion: a clean environment can install and verify the strict templates, deploy the query API and Operator, run a fixture or configured scan, and query the new indices without touching the legacy repository or legacy indices. The template and verification implementation is now present in `index-elasticsearch`; deployment manifests and the Operator remain future work.
 
 ## Reuse From Legacy
 

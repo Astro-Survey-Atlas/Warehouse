@@ -31,6 +31,10 @@ The example contains references to environment variables, not credential values:
   },
   "handlers": ["default", "fits", "coverage"],
   "modality": "image",
+  "catalog": {
+    "raColumn": "ra",
+    "decColumn": "dec"
+  },
   "sink": {
     "connector": {
       "type": "elasticsearch",
@@ -57,6 +61,8 @@ For an OSS source, `type` is `oss` and the endpoint identifies the OSS-compatibl
 - `filters` is optional. A plan with no filter enumerates all supported file candidates under its location.
 - `handlers` is an ordered non-empty list. The scanner validates every name before starting enumeration.
 - `modality` is optional descriptive metadata. It is not an automatic classifier.
+- `catalog` is optional. It supplies explicit CSV/TSV column names when aliases such as `ra`, `dec`, or `healpix_cell` are not sufficient. `raColumn` and `decColumn` must be supplied together; coordinate columns and `healpixColumn` are mutually exclusive.
+- CSV/TSV parsing accepts quoted fields and quoted fields may contain delimiters or newlines. Invalid spatial rows are skipped, counted in the final summary, and never guessed from the file name or path.
 - `sink.connector.type` is `elasticsearch` in the MVP.
 - The sink targets the fixed `ast_file_index_v1` and `ast_coverage_index_v1` contract. A plan cannot silently redirect writes to a legacy `astro_*` index.
 - A plan has one source and one sink.
@@ -74,7 +80,7 @@ For each InputItem:
 The initial implementation should support these behaviors:
 
 - Default file processing: emit the FileAsset record and basic source metadata.
-- FITS header/WCS processing: emit spatial evidence without reading the full image array.
+- FITS header/WCS processing: emit spatial evidence without reading the full image array. Linear TAN image WCS is rasterized across the image extent; a file with only a valid center header may use header-point evidence, while malformed or unsupported WCS is reported as an item error.
 - Catalog processing: read configured CSV/TSV spatial columns or HEALPix values and emit file-level spatial evidence.
 - Coverage normalization: convert evidence to ICRS/NESTED order-8 cells and de-duplicate them.
 - Header-only spectral handling is reserved as a future Handler behavior. Spectral array processing is not part of this contract.
@@ -102,4 +108,4 @@ Plan validation fails before enumeration when:
 
 ## Runtime Summary
 
-The scanner emits a final summary suitable for a Kubernetes Job log and Operator status. It includes phase, discovered file count, processed item count, coverage record count, and completion time. It omits credentials and raw plan secrets.
+The scanner emits a final summary suitable for a Kubernetes Job log and Operator status. It includes phase, discovered file count, processed item count, coverage record count, catalog row count, valid and invalid catalog row counts, error count, and completion time. It omits credentials and raw plan secrets.

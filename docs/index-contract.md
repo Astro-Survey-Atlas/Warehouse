@@ -79,7 +79,7 @@ Coverage records are de-duplicated before writing. A CSV/TSV with many rows in o
 
 ## Extraction Rules
 
-- FITS coverage comes from WCS/header information.
+- FITS coverage comes from WCS/header information. The current header-only implementation rasterizes linear TAN image WCS using `CD` or `CDELT` plus optional `CROTA2`; incomplete geometry may use a header center point, while malformed or unsupported geometry is reported as extraction error.
 - CSV/TSV coverage comes from configured RA/Dec or NESTED HEALPix values.
 - A file with no usable spatial evidence receives a FileAsset with `spatial_status=unknown` and no coverage documents.
 - A malformed spatial value is reported as extraction error according to scan policy and is never guessed from a path or file name.
@@ -91,7 +91,8 @@ Coverage records are de-duplicated before writing. A CSV/TSV with many rows in o
 - Bulk requests are bounded by both byte size and record count.
 - Transient transport failures are retried with a bounded policy; permanent failures fail the scan.
 - The writer does not delete documents because a source item is absent from a later scan.
-- Index creation and mapping installation are deployment responsibilities. The scanner may verify required indices, but must not silently create an incompatible mapping.
+- The Elasticsearch adapter exposes explicit composable templates for both fixed indices. They use `dynamic=strict`, map identifiers and categorical fields as `keyword`, dates as `date`, sizes and HEALPix cells as numeric fields, and reject undeclared fields.
+- Template installation is deployment-owned and does not create indices or rewrite an existing mapping. The adapter can verify that both existing indices contain the required strict mapping; an incompatible index must be rebuilt or migrated explicitly before scanning.
 
 ## Query Join
 

@@ -9,6 +9,7 @@ import org.zhejianglab.astro.atlas.core.CoverageRole;
 import org.zhejianglab.astro.atlas.core.Healpix;
 import org.zhejianglab.astro.atlas.core.InputItem;
 import org.zhejianglab.astro.atlas.core.Modality;
+import org.zhejianglab.astro.atlas.core.ScanPlan;
 import org.zhejianglab.astro.atlas.core.SourceContent;
 import org.zhejianglab.astro.atlas.core.SpatialCoverage;
 
@@ -16,13 +17,22 @@ public final class ScanContext {
   private final InputItem item;
   private final Modality modality;
   private final SourceContent content;
+  private final ScanPlan plan;
   private final Map<String, SpatialCoverage> coverages = new LinkedHashMap<>();
   private final List<String> errors = new ArrayList<>();
+  private int catalogRows;
+  private int invalidCatalogRows;
+  private int validCatalogRows;
 
   public ScanContext(InputItem item, Modality modality, SourceContent content) {
+    this(item, modality, content, null);
+  }
+
+  public ScanContext(InputItem item, Modality modality, SourceContent content, ScanPlan plan) {
     this.item = item;
     this.modality = modality;
     this.content = content;
+    this.plan = plan;
   }
 
   public InputItem item() {
@@ -35,6 +45,10 @@ public final class ScanContext {
 
   public SourceContent content() {
     return content;
+  }
+
+  public ScanPlan plan() {
+    return plan;
   }
 
   public void addCoverage(long cell, CoverageMethod method) {
@@ -59,5 +73,29 @@ public final class ScanContext {
 
   public List<String> errors() {
     return List.copyOf(errors);
+  }
+
+  public void addCatalogRow() {
+    catalogRows++;
+  }
+
+  public void addInvalidCatalogRow() {
+    invalidCatalogRows++;
+  }
+
+  public void addValidCatalogRow() {
+    validCatalogRows++;
+  }
+
+  public int catalogRows() {
+    return catalogRows;
+  }
+
+  public int invalidCatalogRows() {
+    return invalidCatalogRows;
+  }
+
+  public int validCatalogRows() {
+    return validCatalogRows;
   }
 }

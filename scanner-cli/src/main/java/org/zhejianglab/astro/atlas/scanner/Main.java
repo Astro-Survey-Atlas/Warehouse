@@ -44,6 +44,8 @@ public final class Main {
 
   private static void printSummary(ScanSummary summary) {
     System.out.println("phase=" + summary.phase() + " discovered=" + summary.discoveredFileCount()
-        + " processed=" + summary.processedItemCount() + " coverage=" + summary.coverageRecordCount());
+        + " processed=" + summary.processedItemCount() + " coverage=" + summary.coverageRecordCount()
+        + " catalogRows=" + summary.catalogRowCount() + " catalogValid=" + summary.validCatalogRowCount()
+        + " catalogInvalid=" + summary.invalidCatalogRowCount() + " errors=" + summary.errorCount());
   }
 }

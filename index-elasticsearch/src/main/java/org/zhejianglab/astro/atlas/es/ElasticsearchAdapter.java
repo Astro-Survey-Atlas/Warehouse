@@ -16,7 +16,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -37,6 +36,10 @@ import org.zhejianglab.astro.atlas.core.SpatialStatus;
 
 /** HTTP adapter writing fixed indices and serving read-only coverage-to-file queries. */
 public final class ElasticsearchAdapter implements IndexWriter, IndexReader, AutoCloseable {
+  public static final int BULK_MAX_RECORDS = 500;
+  public static final long BULK_MAX_BYTES = 1_500_000L;
+  private static final int MAX_RETRIES = 3;
+  private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
   private final URI endpoint;
   private final HttpClient client;
   private final ObjectMapper mapper;
@@ -57,12 +60,58 @@ public final class ElasticsearchAdapter implements IndexWriter, IndexReader, Aut
 
   @Override
   public void upsertFileAsset(FileAsset fileAsset) {
-    indexDocument(IndexContract.FILE_INDEX, fileAsset.fileId(), fileAsset.toDocument());
+    upsertBatch(List.of(fileAsset), List.of());
   }
 
   @Override
   public void upsertCoverage(SpatialCoverage coverage) {
-    indexDocument(IndexContract.COVERAGE_INDEX, coverage.id(), coverage.toDocument());
+    upsertBatch(List.of(), List.of(coverage));
+  }
+
+  @Override
+  public void upsertBatch(Collection<FileAsset> fileAssets, Collection<SpatialCoverage> coverages) {
+    List<BulkOperation> operations = new ArrayList<>();
+    if (fileAssets != null) {
+      for (FileAsset fileAsset : fileAssets) {
+        if (fileAsset != null) operations.add(operation(IndexContract.FILE_INDEX, fileAsset.fileId(), fileAsset.toDocument()));
+      }
+    }
+    if (coverages != null) {
+      for (SpatialCoverage coverage : coverages) {
+        if (coverage != null) operations.add(operation(IndexContract.COVERAGE_INDEX, coverage.id(), coverage.toDocument()));
+      }
+    }
+    List<BulkOperation> batch = new ArrayList<>();
+    long batchBytes = 0L;
+    for (BulkOperation operation : operations) {
+      long operationBytes = operation.ndjson().getBytes(StandardCharsets.UTF_8).length;
+      if (operationBytes > BULK_MAX_BYTES) {
+        throw new BulkWriteException("Elasticsearch bulk document exceeds " + BULK_MAX_BYTES + " bytes",
+            List.of(operation.id()));
+      }
+      if (!batch.isEmpty() && (batch.size() >= BULK_MAX_RECORDS || batchBytes + operationBytes > BULK_MAX_BYTES)) {
+        sendBulk(batch);
+        batch = new ArrayList<>();
+        batchBytes = 0L;
+      }
+      batch.add(operation);
+      batchBytes += operationBytes;
+    }
+    if (!batch.isEmpty()) sendBulk(batch);
+  }
+
+  /** Installs templates only; it never creates an index or changes an existing mapping. */
+  public void installIndexTemplates() {
+    putJson("/_index_template/" + ElasticsearchIndexTemplates.FILE_TEMPLATE_NAME,
+        ElasticsearchIndexTemplates.fileTemplate());
+    putJson("/_index_template/" + ElasticsearchIndexTemplates.COVERAGE_TEMPLATE_NAME,
+        ElasticsearchIndexTemplates.coverageTemplate());
+  }
+
+  /** Verifies that both fixed indices exist and contain the required field types. */
+  public void verifyIndexMappings() {
+    verifyMapping(IndexContract.FILE_INDEX, ElasticsearchIndexTemplates.fileMappings());
+    verifyMapping(IndexContract.COVERAGE_INDEX, ElasticsearchIndexTemplates.coverageMappings());
   }
 
   @Override
@@ -73,10 +122,10 @@ public final class ElasticsearchAdapter implements IndexWriter, IndexReader, Aut
     terms.put("healpix_cell", cells);
     Map<String, Object> query = new LinkedHashMap<>();
     query.put("query", Map.of("terms", terms));
-    query.put("sort", List.of(
-        Map.of("source_file_id.keyword", "asc"),
-        Map.of("healpix_cell", "asc"),
-        Map.of("coverage_role.keyword", "asc")));
+     query.put("sort", List.of(
+         Map.of("source_file_id", "asc"),
+         Map.of("healpix_cell", "asc"),
+         Map.of("coverage_role", "asc")));
     query.put("size", limit);
     Cursor after = decodeCursor(cursor, cells);
     if (after != null) query.put("search_after", List.of(after.fileId(), after.cell(), after.role()));
@@ -142,26 +191,105 @@ public final class ElasticsearchAdapter implements IndexWriter, IndexReader, Aut
     // java.net.http.HttpClient does not require explicit shutdown.
   }
 
-  private void indexDocument(String index, String id, Map<String, Object> document) {
-    for (int attempt = 1; attempt <= 3; attempt++) {
+  private void sendBulk(List<BulkOperation> original) {
+    List<BulkOperation> pending = List.copyOf(original);
+    for (int retry = 0; !pending.isEmpty(); retry++) {
+      HttpResponse<String> response;
       try {
-        String action = mapper.writeValueAsString(Map.of("index", Map.of("_index", index, "_id", id)));
-        String payload = action + "\n" + mapper.writeValueAsString(document) + "\n";
-        HttpResponse<String> response = client.send(
-            request("POST", "/_bulk?refresh=wait_for", payload).build(),
+        response = client.send(
+            request("POST", "/_bulk?refresh=wait_for", ndjson(pending)).build(),
             HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() >= 500 && attempt < 3) continue;
-        if (response.statusCode() >= 300) throw new IllegalStateException("Elasticsearch bulk request failed with status " + response.statusCode());
-        JsonNode body = mapper.readTree(response.body());
-        if (body.path("errors").asBoolean(false)) throw new IllegalStateException("Elasticsearch bulk request contained an item failure");
-        return;
       } catch (InterruptedException exception) {
         Thread.currentThread().interrupt();
-        throw new IllegalStateException("Elasticsearch bulk request interrupted", exception);
+        throw new BulkWriteException("Elasticsearch bulk request interrupted", ids(pending), pending.size(), exception);
       } catch (IOException exception) {
-        if (attempt == 3) throw new IllegalStateException("Elasticsearch bulk request failed", exception);
+        if (retry >= MAX_RETRIES) {
+          throw new BulkWriteException("Elasticsearch bulk transport retries exhausted", ids(pending), pending.size(), exception);
+        }
+        pause(retry);
+        continue;
       }
+      if (response.statusCode() / 100 != 2) {
+        if (retryable(response.statusCode()) && retry < MAX_RETRIES) {
+          pause(retry);
+          continue;
+        }
+        throw new BulkWriteException("Elasticsearch bulk request failed with status " + response.statusCode(), ids(pending), pending.size());
+      }
+      BulkResponse bulkResponse = parseBulkResponse(response.body(), pending);
+      if (!bulkResponse.permanentIds().isEmpty()) {
+        throw new BulkWriteException("Elasticsearch bulk item failure", sampleIds(bulkResponse.permanentIds()),
+            bulkResponse.permanentIds().size());
+      }
+      if (bulkResponse.retryable().isEmpty()) return;
+      if (retry >= MAX_RETRIES) {
+        throw new BulkWriteException("Elasticsearch bulk item retries exhausted", ids(bulkResponse.retryable()),
+            bulkResponse.retryable().size());
+      }
+      pending = List.copyOf(bulkResponse.retryable());
+      pause(retry);
     }
+  }
+
+  private BulkResponse parseBulkResponse(String body, List<BulkOperation> operations) {
+    final JsonNode root;
+    try {
+      root = mapper.readTree(body);
+    } catch (IOException exception) {
+      throw new BulkWriteException("Elasticsearch bulk returned invalid JSON", ids(operations), operations.size(), exception);
+    }
+    JsonNode items = root == null ? null : root.get("items");
+    if (items == null || !items.isArray() || items.size() != operations.size()) {
+      throw new BulkWriteException("Elasticsearch bulk response item count mismatch", ids(operations), operations.size());
+    }
+    List<BulkOperation> retryable = new ArrayList<>();
+    List<String> permanentIds = new ArrayList<>();
+    for (int index = 0; index < operations.size(); index++) {
+      JsonNode action = firstChild(items.get(index));
+      int status = action == null ? 500 : action.path("status").asInt(500);
+      if (status >= 200 && status < 300) continue;
+      if (retryable(status)) retryable.add(operations.get(index));
+      else permanentIds.add(operations.get(index).id());
+    }
+    return new BulkResponse(retryable, permanentIds);
+  }
+
+  private static JsonNode firstChild(JsonNode object) {
+    if (object == null || !object.isObject() || !object.fields().hasNext()) return null;
+    return object.fields().next().getValue();
+  }
+
+  private void putJson(String path, Map<String, Object> body) {
+    try {
+      HttpResponse<String> response = client.send(
+          request("PUT", path, mapper.writeValueAsString(body)).build(),
+          HttpResponse.BodyHandlers.ofString());
+      if (response.statusCode() >= 300) {
+        throw new IllegalStateException("Elasticsearch index template request failed with status " + response.statusCode());
+      }
+    } catch (InterruptedException exception) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("Elasticsearch index template request interrupted", exception);
+    } catch (IOException exception) {
+      throw new IllegalStateException("Elasticsearch index template request failed", exception);
+    }
+  }
+
+  private void verifyMapping(String index, Map<String, Object> expectedMapping) {
+    JsonNode root = send("GET", "/" + index + "/_mapping", null);
+    JsonNode actual = root.path(index).path("mappings");
+    if (!"strict".equals(actual.path("dynamic").asText())) {
+      throw new IllegalStateException("Elasticsearch mapping for " + index + " must use dynamic=strict");
+    }
+    JsonNode properties = actual.path("properties");
+    JsonNode expectedProperties = mapper.valueToTree(expectedMapping).path("properties");
+    expectedProperties.fields().forEachRemaining(entry -> {
+      JsonNode actualField = properties.path(entry.getKey());
+      String expectedType = entry.getValue().path("type").asText();
+      if (!actualField.isObject() || !expectedType.equals(actualField.path("type").asText())) {
+        throw new IllegalStateException("Elasticsearch mapping for " + index + " has incompatible field " + entry.getKey());
+      }
+    });
   }
 
   private JsonNode send(String method, String path, Map<String, Object> body) {
@@ -180,12 +308,48 @@ public final class ElasticsearchAdapter implements IndexWriter, IndexReader, Aut
     }
   }
 
+  private BulkOperation operation(String index, String id, Map<String, Object> document) {
+    try {
+      String action = mapper.writeValueAsString(Map.of("index", Map.of("_index", index, "_id", id)));
+      return new BulkOperation(index, id, action + "\n" + mapper.writeValueAsString(document) + "\n");
+    } catch (IOException exception) {
+      throw new IllegalStateException("failed to serialize Elasticsearch bulk document", exception);
+    }
+  }
+
+  private static String ndjson(List<BulkOperation> operations) {
+    StringBuilder payload = new StringBuilder();
+    operations.forEach(operation -> payload.append(operation.ndjson()));
+    return payload.toString();
+  }
+
+  private static List<String> ids(Collection<BulkOperation> operations) {
+    return operations.stream().map(BulkOperation::id).limit(10).toList();
+  }
+
+  private static List<String> sampleIds(Collection<String> ids) {
+    return ids.stream().limit(10).toList();
+  }
+
+  private static boolean retryable(int status) {
+    return status == 408 || status == 409 || status == 425 || status == 429 || status >= 500;
+  }
+
+  private static void pause(int retry) {
+    try {
+      Thread.sleep(Math.min(1_000L, 50L << retry));
+    } catch (InterruptedException exception) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("Elasticsearch bulk retry interrupted", exception);
+    }
+  }
+
   private HttpRequest.Builder request(String method, String path, String body) {
     HttpRequest.Builder request = HttpRequest.newBuilder(uri(path))
-        .timeout(Duration.ofSeconds(30));
+         .timeout(REQUEST_TIMEOUT);
     if (body == null) request.method(method, HttpRequest.BodyPublishers.noBody());
     else request.method(method, HttpRequest.BodyPublishers.ofString(body));
-    request.header("Content-Type", "application/json");
+    request.header("Content-Type", path.contains("/_bulk") ? "application/x-ndjson" : "application/json");
     if (authorization != null) request.header("Authorization", authorization);
     return request;
   }
@@ -254,4 +418,38 @@ public final class ElasticsearchAdapter implements IndexWriter, IndexReader, Aut
   }
 
   private record Cursor(String fileId, long cell, String role, String hash) {}
+
+  private record BulkOperation(String index, String id, String ndjson) {}
+
+  private record BulkResponse(List<BulkOperation> retryable, List<String> permanentIds) {}
+
+  public static final class BulkWriteException extends IllegalStateException {
+    private final List<String> failedDocumentIds;
+    private final int failedRecordCount;
+
+    public BulkWriteException(String message, List<String> failedDocumentIds) {
+      this(message, failedDocumentIds, failedDocumentIds.size(), null);
+    }
+
+    public BulkWriteException(String message, List<String> failedDocumentIds, int failedRecordCount) {
+      this(message, failedDocumentIds, failedRecordCount, null);
+    }
+
+    public BulkWriteException(String message, List<String> failedDocumentIds, int failedRecordCount, Throwable cause) {
+      super(message + ": failedRecordCount=" + failedRecordCount + ", failedDocumentIds=" + failedDocumentIds, cause);
+      this.failedDocumentIds = List.copyOf(failedDocumentIds);
+      if (failedRecordCount < this.failedDocumentIds.size()) {
+        throw new IllegalArgumentException("failedRecordCount cannot be smaller than sampled document IDs");
+      }
+      this.failedRecordCount = failedRecordCount;
+    }
+
+    public int failedRecordCount() {
+      return failedRecordCount;
+    }
+
+    public List<String> failedDocumentIds() {
+      return failedDocumentIds;
+    }
+  }
 }

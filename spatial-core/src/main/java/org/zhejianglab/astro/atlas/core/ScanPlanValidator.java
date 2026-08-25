@@ -33,6 +33,7 @@ public final class ScanPlanValidator {
         if (!seen.add(normalized)) errors.add("duplicate handler: " + handler);
       }
     }
+    validateCatalog(plan.catalog(), errors);
     if (plan.sink() == null || plan.sink().connector() == null) {
       errors.add("sink.connector is required");
     } else {
@@ -67,6 +68,19 @@ public final class ScanPlanValidator {
       ref.validate();
     } catch (IllegalArgumentException exception) {
       errors.add(field + ": " + exception.getMessage());
+    }
+  }
+
+  private static void validateCatalog(CatalogSpec catalog, List<String> errors) {
+    if (catalog == null) return;
+    if ((catalog.raColumn() == null) != (catalog.decColumn() == null)) {
+      errors.add("catalog.raColumn and catalog.decColumn must be supplied together");
+    }
+    if (catalog.raColumn() != null && catalog.healpixColumn() != null) {
+      errors.add("catalog coordinate columns and catalog.healpixColumn cannot be selected together");
+    }
+    if (catalog.healpixOrderColumn() != null && catalog.healpixColumn() == null) {
+      errors.add("catalog.healpixOrderColumn requires catalog.healpixColumn");
     }
   }
 

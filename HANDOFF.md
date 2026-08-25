@@ -48,13 +48,21 @@ The MVP handles FITS, CSV/TSV catalogs, and header-only treatment of spectral fi
 - Query API is read-only and has no built-in user identity model. Access control belongs to the surrounding Ingress/API Gateway.
 - Operator remains in scope as a thin Kubernetes adapter. It will create scanner Jobs and report status; it will not calculate HEALPix, parse FITS, or write Elasticsearch from reconcile callbacks.
 
-## Next Implementation Step
+## Current Implementation State
 
-The local FITS/CSV vertical slice and the first live remote verification are complete. JDK 17/Maven are installed locally. The S3-compatible source adapter and Elasticsearch HTTP adapter are wired into scanner/query, and fake HTTP tests cover fixed-index writes, coverage search, cursor continuation, and FileAsset lookup.
+The next hardening pass is now implemented locally. FITS headers with linear TAN WCS and image dimensions produce sampled order-8 footprint cells across the image extent; files without complete geometry retain header-point coverage, while malformed spatial cards become item errors. CSV/TSV handlers accept quoted fields, explicit `catalog` column configuration, HEALPix order columns, and report valid/invalid row counts. Scan writes are accumulated into bounded batches before reaching the writer, and the Elasticsearch adapter splits requests at 500 records or 1.5 MB, retries transport and retryable item failures, and reports failed document IDs without credential material.
 
-Live verification on 2026-08-25 used the supplied OSS endpoint and bucket/prefix through the Kubernetes Elasticsearch Service port-forward. The scanner discovered and processed 6 FITS files and emitted 4 unique order-8 WCS coverage records. Two scans produced the same Elasticsearch counts (`ast_file_index_v1=6`, `ast_coverage_index_v1=4`), confirming stable-ID upsert behavior. Point, cone, and order-8 HEALPix queries returned the expected files and matching coverage; limit-2 cursor pagination returned a second page; health and readiness both returned 200. The first live read exposed dynamic `text` mappings, so the adapter was corrected to sort on `.keyword` fields; the rerun passed. No live credentials were written to the repository or plan JSON.
+`index-elasticsearch` now publishes strict mapping templates and exposes install/verify methods. The templates are deployment-owned and do not rewrite existing indices. The stable mapping decision is recorded in `docs/adr/0006-explicit-elasticsearch-mappings.md`.
 
-A local single-file catalog path is also supported. The file `/mnt/data/catalogs/cosmos-parameter-prediction/web_predictions_COSMOS_prediction_dataset.csv` was scanned in memory: 298,232 rows, valid `ra`/`dec` coordinates, one FileAsset, one known spatial status, and 19 deduplicated order-8 coverage cells. The scanner accepts either a local directory or a single local file path; `--memory` avoids Elasticsearch for this diagnostic.
+## Verification State
+
+The local FITS/CSV vertical slice and the first live remote verification are complete. JDK 17/Maven are installed locally. The S3-compatible source adapter and Elasticsearch HTTP adapter are wired into scanner/query, and fake HTTP tests cover fixed-index writes, coverage search, cursor continuation, FileAsset lookup, explicit mappings, bulk boundaries, item retries, and permanent failures.
+
+Historical live verification on 2026-08-25 used the supplied OSS endpoint and bucket/prefix through the Kubernetes Elasticsearch Service port-forward. The pre-footprint-sampler scanner discovered and processed 6 FITS files and emitted 4 unique order-8 WCS coverage records. Two scans produced the same Elasticsearch counts (`ast_file_index_v1=6`, `ast_coverage_index_v1=4`), confirming stable-ID upsert behavior. Point, cone, and order-8 HEALPix queries returned the expected files and matching coverage; limit-2 cursor pagination returned a second page; health and readiness both returned 200. That run exposed dynamic `text` mappings, which motivated the explicit mapping/template decision now recorded in ADR-0006. No live credentials were written to the repository or plan JSON.
+
+A local single-file catalog path is also supported. The file `/mnt/data/catalogs/cosmos-parameter-prediction/web_predictions_COSMOS_prediction_dataset.csv` was scanned in memory: 298,232 rows, valid `ra`/`dec` coordinates, one FileAsset, one known spatial status, and 19 deduplicated order-8 coverage cells. The scanner accepts either a local directory or a single local file path; `--memory` avoids Elasticsearch for this diagnostic. The live remote verification predates the new WCS footprint sampler and should be rerun after deployment templates are installed; the current shell has no live endpoint or credential references set.
+
+The next environment-gated check is to install and verify the strict templates, rescan the OSS fixture with the new footprint sampler, and repeat the point/cone/HEALPix and idempotency checks. The Operator module and deployment packaging remain future phases.
 
 ## Completion Gate For This Handoff
 

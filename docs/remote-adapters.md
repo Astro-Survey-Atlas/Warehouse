@@ -7,9 +7,11 @@
 - `ast_file_index_v1`
 - `ast_coverage_index_v1`
 
-Writes use deterministic document IDs and Elasticsearch bulk `index` actions with bounded retries for transport and 5xx failures. The adapter does not create indices or mappings.
+Writes use deterministic document IDs and Elasticsearch bulk `index` actions. Requests are bounded by 500 records and 1.5 MB of UTF-8 NDJSON, retry transport/408/409/425/429/5xx failures up to three times, retry only failed bulk items when Elasticsearch returns item-level failures, and report sampled failed document IDs with a total count. The adapter does not create indices or rewrite mappings.
 
-Coverage search uses the requested order-8 cell set, stable sorting by source file, cell, and role, and an opaque Base64URL cursor containing the query-cell fingerprint and Elasticsearch `search_after` values. Reusing a cursor with another cell set is rejected.
+`ElasticsearchAdapter.installIndexTemplates()` installs the strict templates named `ast_file_index_v1_template` and `ast_coverage_index_v1_template`. `verifyIndexMappings()` checks both fixed indices before a deployment starts. Existing indices created with dynamic text mappings are not silently changed; rebuild or migrate them, then run verification.
+
+Coverage search uses the requested order-8 cell set, stable sorting by explicit `keyword` source file and role fields plus cell, and an opaque Base64URL cursor containing the query-cell fingerprint and Elasticsearch `search_after` values. Reusing a cursor with another cell set is rejected.
 
 ## S3-compatible Sources
 

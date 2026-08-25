@@ -7,4 +7,8 @@ public record ScanSummary(
     int discoveredFileCount,
     int processedItemCount,
     int coverageRecordCount,
+    int catalogRowCount,
+    int validCatalogRowCount,
+    int invalidCatalogRowCount,
+    int errorCount,
     Instant completedAt) {}
