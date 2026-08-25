@@ -4,8 +4,13 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import org.zhejianglab.astro.atlas.core.CoverageLayer;
+import org.zhejianglab.astro.atlas.core.CoverageLookup;
 import org.zhejianglab.astro.atlas.core.FileAsset;
+import org.zhejianglab.astro.atlas.core.IndexContract;
 import org.zhejianglab.astro.atlas.core.IndexReader;
+import org.zhejianglab.astro.atlas.core.LayerState;
 import org.zhejianglab.astro.atlas.core.Page;
 import org.zhejianglab.astro.atlas.core.SpatialCoverage;
 import org.zhejianglab.astro.atlas.core.SpatialQuery;
@@ -19,19 +24,21 @@ public final class QueryService {
     this.reader = reader;
   }
 
-  public FileSearchResponse search(SpatialQuery query) {
-    if (query == null) throw new IllegalArgumentException("query is required");
+  public FileSearchResponse search(CoverageLookup lookup) {
+    if (lookup == null) throw new IllegalArgumentException("coverage lookup is required");
+    validateLayers(lookup);
     Map<String, List<MatchingCoverage>> matchingByFile = new LinkedHashMap<>();
-    String cursor = query.cursor();
+    String cursor = lookup.cursor();
     String nextCursor = null;
     while (true) {
-      Page<SpatialCoverage> coveragePage = reader.searchCoverage(query.order8Cells(), query.limit(), cursor);
+      CoverageLookup pageLookup = new CoverageLookup(lookup.layerIds(), lookup.order(), lookup.pixels(), lookup.limit(), cursor);
+      Page<SpatialCoverage> coveragePage = reader.searchCoverage(pageLookup);
       for (SpatialCoverage coverage : coveragePage.items()) {
         matchingByFile.computeIfAbsent(coverage.sourceFileId(), ignored -> new java.util.ArrayList<>())
             .add(MatchingCoverage.from(coverage));
       }
       nextCursor = coveragePage.nextCursor();
-      if (matchingByFile.size() >= query.limit() || nextCursor == null) break;
+      if (matchingByFile.size() >= lookup.limit() || nextCursor == null) break;
       if (nextCursor.equals(cursor)) throw new IllegalStateException("coverage cursor did not advance");
       cursor = nextCursor;
     }
@@ -44,7 +51,30 @@ public final class QueryService {
         .filter(entry -> filesById.containsKey(entry.getKey()))
         .map(entry -> FileSearchItem.from(filesById.get(entry.getKey()), entry.getValue()))
         .toList();
-    return new FileSearchResponse(items, query.limit(), nextCursor);
+    return new FileSearchResponse(items, lookup.limit(), nextCursor, nextCursor != null);
+  }
+
+  /** Compatibility helper for point/cone diagnostics at the fixed diagnostic order. */
+  public FileSearchResponse search(SpatialQuery query, Collection<String> layerIds) {
+    if (query == null) throw new IllegalArgumentException("query is required");
+    if (layerIds == null || layerIds.isEmpty()) throw new IllegalArgumentException("layerIds are required");
+    if (query instanceof org.zhejianglab.astro.atlas.core.HealpixQuery healpix
+        && healpix.order() != IndexContract.DIAGNOSTIC_ORDER) {
+      throw new IllegalArgumentException("compatibility HEALPix diagnostics require order " + IndexContract.DIAGNOSTIC_ORDER);
+    }
+    return search(CoverageLookup.of(layerIds, IndexContract.DIAGNOSTIC_ORDER, query.order8Cells(), query.limit(), query.cursor()));
+  }
+
+  private void validateLayers(CoverageLookup lookup) {
+    Collection<CoverageLayer> layers = reader.findLayers(lookup.layerIds());
+    Map<String, CoverageLayer> byId = new java.util.HashMap<>();
+    for (CoverageLayer layer : layers) byId.put(layer.layerId(), layer);
+    for (String layerId : lookup.layerIds()) {
+      CoverageLayer layer = byId.get(layerId);
+      if (layer == null) throw new UnknownLayerException(layerId);
+      if (layer.state() != LayerState.ACTIVE) throw new LayerStateException(layerId, layer.state());
+      if (!layer.availableOrders().contains(lookup.order())) throw new LayerOrderException(layerId, lookup.order());
+    }
   }
 
   public boolean isReady() {

@@ -2,36 +2,50 @@
 
 ## Start Here
 
-Read these documents before changing the project:
+Read `HANDOFF.md`, `CONTEXT.md`, `docs/requirements.md`,
+`docs/project-boundary.md`, and `docs/architecture.md` before changing the
+project. Read the scan, index, query, and Operator contracts when changing those
+interfaces.
 
-1. `HANDOFF.md` for the current handoff state and next implementation step.
-2. `CONTEXT.md` for the domain vocabulary.
-3. `docs/requirements.md` for product requirements and user stories.
-4. `docs/project-boundary.md` for what this project does and does not own.
-5. `docs/architecture.md` for module ownership and dependency direction.
-6. `docs/scan-plan.md`, `docs/index-contract.md`, and `docs/query-api.md` when working on those contracts.
-
-The sibling repository `/home/aaron/Repo/data-warehouse` is a frozen running legacy/reference system. Do not edit it, migrate it in place, or alter its existing staged changes unless the user explicitly asks for that repository.
+The sibling `/home/aaron/Repo/data-warehouse` is a frozen legacy/reference
+system. Never edit it or use its `astro_*` indices as a runtime fallback.
 
 ## Product Shape
 
-This project is an astronomy-specific file discovery and spatial indexing system. It discovers files under a configured source, extracts spatial metadata from FITS headers or catalog columns, writes file and spatial-coverage documents, and answers spatial queries that return candidate files and modalities.
+Warehouse discovers astronomical files, extracts file-level sky coverage, and
+maintains the current searchable state of CoverageLayers. Assets submits scans,
+consumes normalized documents, owns public MOCs/evidence/reverse-lookup UX, and
+connects only to the configured new Warehouse Elasticsearch endpoint.
 
-The project is not a general workflow engine, data catalog, ETL platform, or user-code execution platform. Keep the domain centered on `FileAsset`, `SpatialCoverage`, `ScanPlan`, `Handler`, `Connector`, and `SpatialQuery`.
-
-The Operator is in scope as a thin Kubernetes adapter. It translates a domain scan request into a scanner Job and reports execution status. Scanner, spatial computation, and Elasticsearch I/O remain outside the reconcile loop.
+The product is not a workflow engine, scientific reduction system, raw-data
+proxy, or universal catalog. Keep v1 centered on CoverageLayer, FileAsset,
+SpatialCoverage, ExtractionMode, SourceSnapshot, and ScanRequest. SourceUnit is
+reserved but not implemented.
 
 ## Working Rules
 
-- Keep `spatial-core` independent of Kubernetes and HTTP server lifecycles.
-- Keep scanner and query API dependencies one-way through `spatial-core`.
-- Make plan validation reject unsupported source, format, handler, or sink combinations before execution.
-- Keep credentials out of plan JSON, logs, indexed documents, and query responses.
-- Preserve stable source-URI-derived file IDs and idempotent upsert behavior.
-- Treat spatial search results as coverage candidates at HEALPix order 8; do not imply exact geometric containment.
-- Add tests at the highest useful interface and verify external behavior rather than private implementation details.
-- Update the relevant contract document and an ADR when a decision changes a stable product rule.
+- Keep `spatial-core` independent of Kubernetes, HTTP lifecycles, and
+  Elasticsearch transport.
+- A ScanPlan declares one ExtractionMode; callers never order internal steps.
+- Validate every plan before source enumeration or credentialed I/O.
+- Use ICRS and explicit NESTED HEALPix `order/ipix`; never infer finer cells
+  from coarse previews or source coverage.
+- Preserve coverage precision as `exact`, `estimated`, or `entrypoint-only`;
+  report response truncation separately.
+- Refresh one CoverageLayer as current state through `UPDATING`, `ACTIVE`, or
+  `FAILED`; never expose partial or stale layer coverage as an empty result.
+- Keep credentials out of plan values, evidence documents, logs, indices, and
+  query responses.
+- Keep `ast_*` isolated from legacy `astro_*`; index suffixes version mappings,
+  not scan runs.
+- Retain source inventory hashes and scan/extraction errors as evidence outside
+  the browser's initial request.
+- Add tests at the highest useful interface and verify behavior rather than
+  private class shape.
+- Update the relevant contract and ADR whenever a stable product rule changes.
 
 ## Completion Standard
 
-A feature is complete only when its contract is documented, its module tests cover normal and failure behavior, its public inputs reject invalid data, and `mvn test` passes from the repository root. Do not add a generic abstraction merely to make the project resemble a workflow platform.
+A feature is complete only when its contract is documented, invalid public
+inputs fail before execution, normal and failure behavior are tested, evidence
+and precision invariants hold, and `mvn test` passes from the repository root.

@@ -16,13 +16,24 @@ spec:
       limits:
         cpu: "1"
         memory: 1Gi
+    evidence:
+      claimName: atlas-evidence-smoke
+      mountPath: /var/lib/atlas-evidence
   credentials:
     source:
       secretName: atlas-minio-smoke-credentials
       accessKeyKey: accessKey
       secretKeyKey: secretKey
   plan:
-    version: 1
+    version: 2
+    scanRunId: minio-catalog-smoke-20260825
+    layer:
+      layerId: smoke-catalog
+      surveyId: smoke
+      releaseId: local
+      productId: catalog
+      modality: catalog
+      coverageRole: occupancy
     source:
       connector:
         type: s3
@@ -37,13 +48,16 @@ spec:
     filters:
       includeSuffixes:
         - .csv
-    handlers:
-      - default
-      - catalog
-      - coverage
-    modality: catalog
+    extraction:
+      mode: catalog-radec
+      outputOrder: 8
+      catalog:
+        raColumn: ra
+        decColumn: dec
     sink:
       connector:
         type: elasticsearch
         endpoint: http://warehouse-elasticsearch.warehouse.svc.cluster.local:9200
         credentialRef: {}
+    evidence:
+      outputPath: /var/lib/atlas-evidence/minio-catalog-smoke-20260825

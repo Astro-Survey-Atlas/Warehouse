@@ -18,21 +18,18 @@ public final class Main {
     boolean memory = args.length == 3 && "--memory".equals(args[2]);
     if (args.length == 3 && !memory) throw new IllegalArgumentException("unknown option: " + args[2]);
     ScanPlan plan = new ScanPlanLoader().load(Path.of(args[1]));
-    ScanPlanValidator.validate(plan);
+    ScanPlanValidator.validate(plan, memory);
     SourceAdapter source = switch (plan.source().connector().type()) {
       case LOCAL -> new LocalSourceAdapter();
       case S3, OSS -> S3SourceAdapter.fromPlan(plan);
     };
     if (memory) {
       InMemoryIndex index = new InMemoryIndex();
-      printSummary(new ScanService(source, index).scan(plan));
-      System.out.println("spatialStatuses=" + index.files().stream()
-          .collect(java.util.stream.Collectors.groupingBy(file -> file.spatialStatus().value(), java.util.TreeMap::new, java.util.stream.Collectors.counting())));
+      printSummary(new ScanService(source, index).scan(plan, true));
+      System.out.println("layers=" + index.layers().stream().map(layer -> layer.layerId() + ":" + layer.state()).toList());
       System.out.println("coverageCells=" + index.coverages().stream()
-          .map(coverage -> Long.toString(coverage.healpixCell()))
-          .distinct()
-          .sorted()
-          .collect(java.util.stream.Collectors.joining(",")));
+          .map(coverage -> coverage.healpixOrder() + "/" + coverage.healpixCell())
+          .distinct().sorted().collect(java.util.stream.Collectors.joining(",")));
       return;
     }
     Map<String, String> credentials = CredentialResolver.resolve(plan.sink().connector().credentialRef());
@@ -43,9 +40,12 @@ public final class Main {
   }
 
   private static void printSummary(ScanSummary summary) {
-    System.out.println("phase=" + summary.phase() + " discovered=" + summary.discoveredFileCount()
+    System.out.println("phase=" + summary.phase() + " scanRunId=" + summary.scanRunId()
+        + " layerId=" + summary.layerId() + " snapshot=" + summary.sourceSnapshotSha256()
+        + " discovered=" + summary.discoveredFileCount()
         + " processed=" + summary.processedItemCount() + " coverage=" + summary.coverageRecordCount()
         + " catalogRows=" + summary.catalogRowCount() + " catalogValid=" + summary.validCatalogRowCount()
-        + " catalogInvalid=" + summary.invalidCatalogRowCount() + " errors=" + summary.errorCount());
+        + " catalogInvalid=" + summary.invalidCatalogRowCount() + " errors=" + summary.errorCount()
+        + " orders=" + summary.availableOrders() + " evidence=" + summary.evidencePath());
   }
 }

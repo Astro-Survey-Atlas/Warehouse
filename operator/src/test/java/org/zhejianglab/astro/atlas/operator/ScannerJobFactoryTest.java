@@ -19,7 +19,8 @@ class ScannerJobFactoryTest {
     var plan = new PlanMaterializer(mapper).render(
         OperatorTestFixtures.localPlan(null), CredentialsSpec.empty());
     var spec = new ScanRequestSpec(OperatorTestFixtures.localPlan(null),
-        ScannerSpec.defaults("atlas-scanner:test"), CredentialsSpec.empty());
+        new ScannerSpec("atlas-scanner:test", null, 1, 86_400L, 86_400,
+            ResourceSpec.empty(), OperatorTestFixtures.evidenceVolume()), CredentialsSpec.empty());
     ScannerJobFactory factory = new ScannerJobFactory();
     String jobName = KubeNames.scannerJobName("nightly-scan", plan.sha256());
     String configMapName = KubeNames.planConfigMapName(jobName);
@@ -30,7 +31,9 @@ class ScannerJobFactoryTest {
     assertEquals("atlas-scanner:test", job.getSpec().getTemplate().getSpec().getContainers().get(0).getImage());
     assertEquals(List.of("java", "-jar", "/app/scanner-cli.jar"),
         job.getSpec().getTemplate().getSpec().getContainers().get(0).getCommand());
-    assertEquals(1, job.getSpec().getTemplate().getSpec().getVolumes().size());
+    assertEquals(2, job.getSpec().getTemplate().getSpec().getVolumes().size());
+    assertEquals("atlas-evidence", job.getSpec().getTemplate().getSpec().getVolumes().get(1)
+        .getPersistentVolumeClaim().getClaimName());
     assertEquals("uid-1", job.getMetadata().getOwnerReferences().get(0).getUid());
     assertTrue(job.getMetadata().getAnnotations().containsKey(OperatorConstants.PLAN_HASH_ANNOTATION));
     assertEquals(Map.of("plan.json", plan.json()),

@@ -8,15 +8,17 @@ class SpatialCoverageTest {
   @Test
   void rejectsCoverageWhoseFileIdDoesNotMatchSourceUri() {
     assertThrows(IllegalArgumentException.class, () -> new SpatialCoverage(
+        "wrong-layer",
         "wrong-file-id",
         "s3://survey/image.fits",
         8,
         0,
         CoordinateFrame.ICRS,
         HealpixNesting.NESTED,
-        CoverageMethod.WCS,
+        CoverageMethod.FITS_WCS,
         CoverageRole.FOOTPRINT,
         Modality.of("image"),
+        CoveragePrecision.ESTIMATED,
         null));
   }
 }

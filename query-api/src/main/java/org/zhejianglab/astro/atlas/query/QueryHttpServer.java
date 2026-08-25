@@ -10,7 +10,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.zhejianglab.astro.atlas.core.SpatialQuery;
+import org.zhejianglab.astro.atlas.core.CoverageLookup;
 
 public final class QueryHttpServer implements AutoCloseable {
   private final HttpServer server;
@@ -25,6 +25,7 @@ public final class QueryHttpServer implements AutoCloseable {
     this.server.createContext("/healthz", this::health);
     this.server.createContext("/readyz", this::ready);
     this.server.createContext("/v1/files/", this::search);
+    this.server.createContext("/v2/files/", this::search);
   }
 
   public void start() {
@@ -53,7 +54,8 @@ public final class QueryHttpServer implements AutoCloseable {
       sendError(exchange, new ApiException(405, "METHOD_NOT_ALLOWED", "only GET is supported", null));
       return;
     }
-    sendJson(exchange, service.isReady() ? 200 : 503, Map.of("status", service.isReady() ? "ready" : "not_ready"));
+    boolean ready = service.isReady();
+    sendJson(exchange, ready ? 200 : 503, Map.of("status", ready ? "ready" : "not_ready"));
   }
 
   private void search(HttpExchange exchange) throws IOException {
@@ -63,10 +65,21 @@ public final class QueryHttpServer implements AutoCloseable {
     }
     try {
       String path = exchange.getRequestURI().getPath();
-      SpatialQuery query = QueryRequestParser.parse(path, exchange.getRequestURI().getRawQuery());
-      sendJson(exchange, 200, service.search(query));
+      if (path.equals("/v2/files/healpix")) {
+        CoverageLookup lookup = QueryRequestParser.parseCoverageLookup(path, exchange.getRequestURI().getRawQuery());
+        sendJson(exchange, 200, service.search(lookup));
+      } else {
+        QueryRequestParser.DiagnosticRequest request = QueryRequestParser.parseDiagnostic(path, exchange.getRequestURI().getRawQuery());
+        sendJson(exchange, 200, service.search(request.query(), request.layerIds()));
+      }
     } catch (ApiException exception) {
       sendError(exchange, exception);
+    } catch (LayerStateException exception) {
+      sendError(exchange, new ApiException(409, "LAYER_NOT_QUERYABLE", exception.getMessage(), exception.layerId()));
+    } catch (LayerOrderException exception) {
+      sendError(exchange, new ApiException(409, "ORDER_NOT_AVAILABLE", exception.getMessage(), exception.layerId()));
+    } catch (UnknownLayerException exception) {
+      sendError(exchange, new ApiException(404, "UNKNOWN_LAYER", exception.getMessage(), exception.layerId()));
     } catch (RuntimeException exception) {
       sendError(exchange, new ApiException(500, "QUERY_FAILED", "query failed", null));
     }

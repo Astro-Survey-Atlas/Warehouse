@@ -26,6 +26,9 @@ kubectl apply -f deploy/kubernetes/namespace.yaml
 kubectl apply -f deploy/kubernetes/crd.yaml
 kubectl apply -f deploy/kubernetes/rbac.yaml
 kubectl apply -f deploy/kubernetes/operator-deployment.yaml
+
+# Create this once in the ScanRequest namespace (the example uses `atlas`).
+kubectl apply -f deploy/kubernetes/evidence-pvc.example.yaml
 ```
 
 Create credential Secrets out of band. Values are never put in a ScanRequest:
@@ -40,7 +43,10 @@ kubectl -n atlas create secret generic atlas-elasticsearch-credentials \
 ```
 
 Edit `scanrequest-oss.example.yaml` for the real endpoint, bucket, prefix, and
-index endpoint, then submit it:
+index endpoint. The referenced `atlas-evidence` PVC must exist in the same
+namespace as the ScanRequest; the scanner writes `source-inventory.json`,
+`normalized-scan.json`, and `errors.json` below the configured mount. Then
+submit it:
 
 ```text
 kubectl apply -f deploy/kubernetes/scanrequest-oss.example.yaml
@@ -58,12 +64,23 @@ recurring scans, read Secret values, write Elasticsearch from reconcile, or
 mount local filesystem sources. Local source Jobs need a future explicit PVC
 or host-path policy rather than an implicit host mount.
 
+Persisted scans require `spec.scanner.evidence.claimName`. The Operator mounts
+that PVC at `mountPath` (default `/var/lib/atlas-evidence`) and rejects a plan
+whose `evidence.outputPath` escapes the mount. An object-store-backed CSI
+volume is supported through the same PVC contract; direct evidence uploads are
+not part of the scanner MVP.
+
 The resource and lifecycle contract is documented in `docs/operator.md`.
 
 For the disposable in-cluster MinIO fixture, submit
 `scanrequest-minio-smoke.yaml`. It uses `atlas-minio-smoke-credentials` by key
 reference in the checked-in example; create that temporary Secret from your
-fixture credentials before submission:
+fixture credentials before submission, and create its namespace-local evidence
+PVC first:
+
+```text
+kubectl apply -f deploy/kubernetes/evidence-pvc-minio-smoke.yaml
+```
 
 ```text
 kubectl -n warehouse create secret generic atlas-minio-smoke-credentials \

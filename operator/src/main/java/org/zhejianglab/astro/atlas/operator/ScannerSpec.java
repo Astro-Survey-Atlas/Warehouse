@@ -6,7 +6,18 @@ public record ScannerSpec(
     Integer backoffLimit,
     Long activeDeadlineSeconds,
     Integer ttlSecondsAfterFinished,
-    ResourceSpec resources) {
+    ResourceSpec resources,
+    EvidenceVolumeSpec evidence) {
+
+  public ScannerSpec(
+      String image,
+      String serviceAccountName,
+      Integer backoffLimit,
+      Long activeDeadlineSeconds,
+      Integer ttlSecondsAfterFinished,
+      ResourceSpec resources) {
+    this(image, serviceAccountName, backoffLimit, activeDeadlineSeconds, ttlSecondsAfterFinished, resources, null);
+  }
 
   public ScannerSpec {
     if (resources == null) resources = ResourceSpec.empty();
@@ -22,6 +33,6 @@ public record ScannerSpec(
   }
 
   public static ScannerSpec defaults(String image) {
-    return new ScannerSpec(image, null, 1, 86_400L, 86_400, ResourceSpec.empty());
+    return new ScannerSpec(image, null, 1, 86_400L, 86_400, ResourceSpec.empty(), null);
   }
 }

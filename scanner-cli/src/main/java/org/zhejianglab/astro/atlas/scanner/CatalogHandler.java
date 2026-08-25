@@ -10,33 +10,48 @@ import java.util.Locale;
 import java.util.Map;
 import org.zhejianglab.astro.atlas.core.CatalogSpec;
 import org.zhejianglab.astro.atlas.core.CoverageMethod;
+import org.zhejianglab.astro.atlas.core.CoveragePrecision;
+import org.zhejianglab.astro.atlas.core.ExtractionMode;
 import org.zhejianglab.astro.atlas.core.FileType;
 import org.zhejianglab.astro.atlas.core.Healpix;
+import org.zhejianglab.astro.atlas.core.InputItem;
+import org.zhejianglab.astro.atlas.core.ScanPlan;
+import org.zhejianglab.astro.atlas.core.SourceContent;
 
 /** Reads quoted CSV/TSV rows and emits one de-duplicated coverage set per file. */
-public final class CatalogHandler implements Handler {
+public final class CatalogHandler implements CoverageExtractor {
   private static final String[] RA_ALIASES = {"ra", "ra_deg", "raj2000"};
   private static final String[] DEC_ALIASES = {"dec", "dec_deg", "dej2000"};
   private static final String[] PIXEL_ALIASES = {"healpix_cell", "healpix", "pixel"};
   private static final String[] ORDER_ALIASES = {"healpix_order", "order"};
 
   @Override
-  public void handle(ScanContext context) throws IOException {
+  public ExtractionResult extract(InputItem item, SourceContent content, ScanPlan plan) {
+    ScanContext context = new ScanContext(item, content, plan);
+    try {
+      extractInto(context);
+    } catch (IOException exception) {
+      context.addError("catalog read failed: " + exception.getMessage());
+    }
+    return context.result();
+  }
+
+  private void extractInto(ScanContext context) throws IOException {
     if (context.item().fileType() != FileType.CSV && context.item().fileType() != FileType.TSV) return;
     char delimiter = context.item().fileType() == FileType.TSV ? '\t' : ',';
-    CatalogSpec spec = context.plan() == null ? CatalogSpec.empty() : context.plan().catalog();
+    CatalogSpec spec = context.plan().extraction().catalog();
+    ExtractionMode mode = context.plan().extraction().mode();
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(context.content().open(), StandardCharsets.UTF_8))) {
       String headerLine = readRecord(reader, delimiter);
       if (headerLine == null) return;
       List<String> headers = parse(headerLine, delimiter);
       Map<String, Integer> columns = columns(headers);
-      boolean coordinateMode = spec.raColumn() != null || spec.decColumn() != null;
-      boolean healpixMode = spec.healpixColumn() != null;
+      boolean coordinateMode = mode == ExtractionMode.CATALOG_RADEC;
+      boolean healpixMode = mode == ExtractionMode.CATALOG_HEALPIX;
       Integer raColumn = healpixMode ? null : first(columns, spec.raColumn(), RA_ALIASES);
       Integer decColumn = healpixMode ? null : first(columns, spec.decColumn(), DEC_ALIASES);
       Integer pixelColumn = coordinateMode ? null : first(columns, spec.healpixColumn(), PIXEL_ALIASES);
       Integer orderColumn = coordinateMode ? null : first(columns, spec.healpixOrderColumn(), ORDER_ALIASES);
-      boolean hasConfiguredSpatialColumns = spec.raColumn() != null || spec.decColumn() != null || spec.healpixColumn() != null;
       if (spec.raColumn() != null && (raColumn == null || decColumn == null)) {
         context.addError("configured catalog RA/Dec columns were not found");
         return;
@@ -45,7 +60,8 @@ public final class CatalogHandler implements Handler {
         context.addError("configured catalog HEALPix column was not found");
         return;
       }
-      if (!hasConfiguredSpatialColumns && raColumn == null && pixelColumn == null) return;
+      if (coordinateMode && (raColumn == null || decColumn == null)) return;
+      if (healpixMode && pixelColumn == null) return;
 
       String line;
       while ((line = readRecord(reader, delimiter)) != null) {
@@ -57,17 +73,22 @@ public final class CatalogHandler implements Handler {
             Double ra = parse(values, raColumn);
             Double dec = parse(values, decColumn);
             if (ra == null || dec == null) throw new IllegalArgumentException("malformed catalog coordinate");
-            context.addCoverage(Healpix.ang2pixNest(8, ra, dec), CoverageMethod.CATALOG_COORDINATES);
+            int order = context.plan().extraction().outputOrder();
+            context.addCoverage(order, Healpix.ang2pixNest(order, ra, dec),
+                CoverageMethod.CATALOG_RADEC, CoveragePrecision.EXACT, null);
           } else if (pixelColumn != null) {
             Long pixel = parseLong(values, pixelColumn);
-            Long parsedOrder = orderColumn == null ? 8L : parseLong(values, orderColumn);
+            Long parsedOrder = orderColumn == null
+                ? (spec.healpixOrder() == null ? null : spec.healpixOrder().longValue())
+                : parseLong(values, orderColumn);
             if (pixel == null || parsedOrder == null
                 || parsedOrder < Integer.MIN_VALUE || parsedOrder > Integer.MAX_VALUE) {
               throw new IllegalArgumentException("malformed catalog HEALPix value");
             }
-            for (long cell : Healpix.normalizeQueryCells(parsedOrder.intValue(), pixel)) {
-              context.addCoverage(cell, CoverageMethod.CATALOG_HEALPIX);
-            }
+            int sourceOrder = parsedOrder.intValue();
+            Healpix.validateCell(sourceOrder, pixel);
+            context.addCoverage(sourceOrder, pixel, CoverageMethod.CATALOG_HEALPIX,
+                CoveragePrecision.EXACT, sourceOrder);
           } else {
             continue;
           }

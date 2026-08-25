@@ -1,75 +1,47 @@
 # Operator Contract
 
-## Resource
+The namespaced `atlas.zhejianglab.org/v1alpha1` ScanRequest carries a canonical
+ScanPlan v2, scanner execution settings, and Secret key references. The alpha
+CRD remains the same while the embedded plan moves from version 1 to version 2.
 
-The Kubernetes adapter watches the namespaced `ScanRequest` resource:
+## Evidence Storage
 
-```yaml
-apiVersion: atlas.zhejianglab.org/v1alpha1
-kind: ScanRequest
-metadata:
-  name: survey-release-1
-spec:
-  plan: <canonical ScanPlan>
-  credentials:
-    source:
-      secretName: atlas-source-credentials
-      accessKeyKey: accessKey
-      secretKeyKey: secretKey
-    sink:
-      secretName: atlas-elasticsearch-credentials
-      usernameKey: username
-      passwordKey: password
-  scanner:
-    image: astro-atlas-scanner:0.1.0
-```
-
-`spec.plan` is the same finite ScanPlan accepted by `scanner-cli`. The
-Operator validates it with `spatial-core` before creating any Job. The
-`credentials` section contains only Secret names and keys. It is not a
-credential store and the Operator never reads Secret data.
+Evidence is not an Elasticsearch document and is not part of the public
+release request. A persisted plan must set `spec.scanner.evidence.claimName`.
+The Operator mounts that PVC into the scanner Job at
+`/var/lib/atlas-evidence` by default (or the configured absolute `mountPath`),
+and requires `plan.evidence.outputPath` to be below that directory. The scanner
+writes the source inventory, normalized scan, and extraction errors there.
+The PVC must exist in the ScanRequest namespace. A CSI-backed object-store
+volume can satisfy this contract; direct object-store evidence writes are
+deferred.
 
 ## Reconciliation
 
-For a valid request, the Operator:
+For a valid request the Operator:
 
-1. Renders a secret-free `plan.json` into an immutable ConfigMap.
-2. Creates a scanner Job owned by the ScanRequest.
-3. Injects environment credential references with `env.valueFrom.secretKeyRef`.
-4. Rewrites file credential references to read-only Secret volume paths.
-5. Polls Job state and copies only the scanner's structured summary line into status.
+1. Validates ScanPlan through `spatial-core` before creating resources.
+2. Renders a secret-free immutable plan ConfigMap.
+3. Projects credentials through Secret environment/file references without
+   reading their values.
+4. Labels the Job and Pod with a DNS-safe layer identity.
+5. Waits when another non-terminal Job for the same layer exists.
+6. Creates the plan/execution-hash-named scanner Job and reports its summary.
 
-The Job name includes a SHA-256 identity derived from the rendered plan,
-credential binding references, and scanner execution settings. Reapplying the
-same request is idempotent. Changing any of those inputs creates a new Job and
-leaves the old Job available until its configured TTL. Deleting the ScanRequest lets
-Kubernetes garbage-collect its owned ConfigMaps and Jobs.
+Changing plan, credential bindings, image, or execution settings creates a new
+Job after the current layer Job terminates. Completed Jobs remain under TTL for
+diagnosis; they are not indexed result history. Elasticsearch layer leases also
+protect CLI and cross-request concurrency.
 
-After a terminal Job is removed by TTL, the terminal status prevents the same
-execution from being recreated. A changed execution identity is treated as a
-new run and creates a new Job.
+## Status
 
-The initial status phases are `INVALID`, `SUBMITTED`, `RUNNING`, `SUCCEEDED`,
-and `FAILED`. Invalid plans and missing Secret bindings are reported in status
-without attempting source or Elasticsearch access.
-
-## Runtime Configuration
-
-The Operator process reads:
-
-| Environment variable | Default | Meaning |
-| --- | --- | --- |
-| `WATCH_NAMESPACE` | empty | Empty watches all namespaces; otherwise one namespace |
-| `SCANNER_IMAGE` | `ghcr.io/zhejianglab/astro-survey-atlas-scanner:0.1.0` | Default Job image |
-| `RECONCILE_INTERVAL_SECONDS` | `10` | Job status polling interval |
-
-The deployment uses a ClusterRole because the checked-in default watches all
-namespaces. A namespaced Role/RoleBinding can be substituted when
-`WATCH_NAMESPACE` is set.
+CR phases are `INVALID`, `WAITING`, `SUBMITTED`, `RUNNING`, `SUCCEEDED`, and
+`FAILED`. Scanner summary includes layer ID, run ID, snapshot hash, counts,
+available orders, errors, and evidence path. Missing evidence storage or
+credentials fail before source access.
 
 ## Deliberate Limits
 
-The Operator submits one finite scanner Job. It does not implement schedules,
-DAGs, arbitrary container commands, local host-path mounts, scientific
-processing, or direct Elasticsearch requests. The scanner image contract is a
-Java 17 image containing `/app/scanner-cli.jar`.
+The Operator contains no source enumeration, WCS, HEALPix, evidence generation,
+or Elasticsearch code. It creates one finite Job and does not provide schedules,
+DAGs, arbitrary commands, or user plugins.

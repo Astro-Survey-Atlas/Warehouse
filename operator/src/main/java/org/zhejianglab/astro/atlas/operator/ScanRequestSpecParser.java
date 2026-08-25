@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.zhejianglab.astro.atlas.core.PlanValidationException;
@@ -40,6 +41,7 @@ public final class ScanRequestSpecParser {
     try {
       spec = mapper.treeToValue(specNode, ScanRequestSpec.class);
       ScanPlanValidator.validate(spec.plan());
+      validateEvidenceMount(spec, errors);
     } catch (PlanValidationException exception) {
       errors.addAll(exception.errors());
     } catch (Exception exception) {
@@ -55,6 +57,28 @@ public final class ScanRequestSpecParser {
         spec.scanner().ttlSecondsAfterFinished(), spec.scanner().resources());
     return new ParsedScanRequest(new ScanRequestSpec(spec.plan(), scanner, spec.credentials()),
         resource.getMetadata().getName());
+  }
+
+  private static void validateEvidenceMount(ScanRequestSpec spec, List<String> errors) {
+    if (spec == null || spec.plan() == null || spec.plan().evidence() == null
+        || spec.plan().evidence().outputPath() == null) return;
+    EvidenceVolumeSpec volume = spec.scanner() == null ? null : spec.scanner().evidence();
+    if (volume == null) {
+      errors.add("scanner.evidence is required for persisted evidence.outputPath");
+      return;
+    }
+    if (volume.readOnly()) {
+      errors.add("scanner.evidence.readOnly must be false for persisted evidence");
+    }
+    try {
+      Path mount = Path.of(volume.mountPath()).normalize();
+      Path output = Path.of(spec.plan().evidence().outputPath()).normalize();
+      if (!output.isAbsolute() || !output.startsWith(mount)) {
+        errors.add("evidence.outputPath must be under scanner.evidence.mountPath");
+      }
+    } catch (RuntimeException exception) {
+      errors.add("evidence.outputPath must be a valid path under scanner.evidence.mountPath");
+    }
   }
 
   public record ParsedScanRequest(ScanRequestSpec spec, String name) {}

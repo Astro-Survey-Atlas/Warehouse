@@ -4,14 +4,15 @@
 
 `index-elasticsearch` uses the JDK HTTP client and Jackson. It writes only:
 
+- `ast_layer_index_v1`
 - `ast_file_index_v1`
 - `ast_coverage_index_v1`
 
 Writes use deterministic document IDs and Elasticsearch bulk `index` actions. Requests are bounded by 500 records and 1.5 MB of UTF-8 NDJSON, retry transport/408/409/425/429/5xx failures up to three times, retry only failed bulk items when Elasticsearch returns item-level failures, and report sampled failed document IDs with a total count. The adapter does not create indices or rewrite mappings.
 
-`ElasticsearchAdapter.installIndexTemplates()` installs the strict templates named `ast_file_index_v1_template` and `ast_coverage_index_v1_template`. `verifyIndexMappings()` checks both fixed indices before a deployment starts. Existing indices created with dynamic text mappings are not silently changed; rebuild or migrate them, then run verification.
+`ElasticsearchAdapter.installIndexTemplates()` installs the strict templates named `ast_layer_index_v1_template`, `ast_file_index_v1_template`, and `ast_coverage_index_v1_template`. `verifyIndexMappings()` checks all three fixed indices before a deployment starts. Existing indices created with dynamic text mappings are not silently changed; rebuild or migrate them, then run verification.
 
-Coverage search uses the requested order-8 cell set, stable sorting by explicit `keyword` source file and role fields plus cell, and an opaque Base64URL cursor containing the query-cell fingerprint and Elasticsearch `search_after` values. Reusing a cursor with another cell set is rejected.
+Coverage search uses one explicit requested order and cell set, stable sorting by explicit `keyword` layer/file and role fields plus cell, and an opaque Base64URL cursor containing the query-cell fingerprint and Elasticsearch `search_after` values. Reusing a cursor with another cell set is rejected.
 
 ## S3-compatible Sources
 
@@ -19,7 +20,7 @@ Coverage search uses the requested order-8 cell set, stable sorting by explicit 
 
 The connector may supply `region`; when omitted, the adapter uses `us-east-1`. OSS deployments should provide the region expected by the endpoint for signature compatibility.
 
-Handlers receive a `SourceContent` seam, so FITS and catalog handlers do not know whether bytes came from local storage or object storage.
+Extraction modes receive a `SourceContent` seam, so FITS and catalog extractors do not know whether bytes came from local storage or object storage.
 
 ## Runtime Configuration
 

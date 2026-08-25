@@ -3,7 +3,7 @@ package org.zhejianglab.astro.atlas.es;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Explicit bootstrap tool for templates and the two fixed product indices. */
+/** Explicit bootstrap tool for templates and the three current-state indices. */
 public final class IndexAdminMain {
   private IndexAdminMain() {}
 

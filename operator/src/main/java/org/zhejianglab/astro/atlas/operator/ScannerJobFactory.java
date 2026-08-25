@@ -10,6 +10,7 @@ import io.fabric8.kubernetes.api.model.ObjectMetaBuilder;
 import io.fabric8.kubernetes.api.model.OwnerReferenceBuilder;
 import io.fabric8.kubernetes.api.model.PodSpecBuilder;
 import io.fabric8.kubernetes.api.model.PodTemplateSpecBuilder;
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaimVolumeSourceBuilder;
 import io.fabric8.kubernetes.api.model.Volume;
 import io.fabric8.kubernetes.api.model.VolumeMount;
 import io.fabric8.kubernetes.api.model.VolumeBuilder;
@@ -31,7 +32,7 @@ public final class ScannerJobFactory {
     return new ConfigMapBuilder()
         .withApiVersion("v1")
         .withKind("ConfigMap")
-        .withMetadata(metadata(request, namespace, configMapName, jobName, plan.sha256()))
+        .withMetadata(metadata(request, namespace, configMapName, jobName, plan.sha256(), null))
         .withImmutable(true)
         .withData(Map.of("plan.json", plan.json()))
         .build();
@@ -51,6 +52,14 @@ public final class ScannerJobFactory {
     List<VolumeMount> mounts = new ArrayList<>(plan.volumeMounts());
     mounts.add(new io.fabric8.kubernetes.api.model.VolumeMountBuilder().withName("scan-plan")
         .withMountPath("/etc/atlas/scan").withReadOnly(true).build());
+    EvidenceVolumeSpec evidence = scanner.evidence();
+    if (evidence != null) {
+      volumes.add(new VolumeBuilder().withName("scan-evidence")
+          .withPersistentVolumeClaim(new PersistentVolumeClaimVolumeSourceBuilder()
+              .withClaimName(evidence.claimName()).withReadOnly(evidence.readOnly()).build()).build());
+      mounts.add(new io.fabric8.kubernetes.api.model.VolumeMountBuilder().withName("scan-evidence")
+          .withMountPath(evidence.mountPath()).withReadOnly(evidence.readOnly()).build());
+    }
 
     Container container = new ContainerBuilder()
         .withName("scanner")
@@ -66,13 +75,13 @@ public final class ScannerJobFactory {
     return new JobBuilder()
         .withApiVersion("batch/v1")
         .withKind("Job")
-        .withMetadata(metadata(request, namespace, jobName, jobName, plan.sha256()))
+        .withMetadata(metadata(request, namespace, jobName, jobName, plan.sha256(), spec.plan().layer().layerId()))
         .withSpec(new JobSpecBuilder()
             .withBackoffLimit(valueOr(scanner.backoffLimit(), 1))
             .withActiveDeadlineSeconds(valueOr(scanner.activeDeadlineSeconds(), 86_400L))
             .withTtlSecondsAfterFinished(valueOr(scanner.ttlSecondsAfterFinished(), 86_400))
             .withTemplate(new PodTemplateSpecBuilder()
-                .withMetadata(new ObjectMetaBuilder().withLabels(labels(request, jobName)).build())
+                .withMetadata(new ObjectMetaBuilder().withLabels(labels(request, jobName, spec.plan().layer().layerId())).build())
                 .withSpec(new PodSpecBuilder()
                     .withRestartPolicy("Never")
                     .withServiceAccountName(scanner.serviceAccountName())
@@ -89,11 +98,12 @@ public final class ScannerJobFactory {
       String namespace,
       String name,
       String jobName,
-      String planHash) {
+      String planHash,
+      String layerId) {
     ObjectMetaBuilder builder = new ObjectMetaBuilder()
         .withName(name)
         .withNamespace(namespace)
-        .withLabels(labels(request, jobName))
+        .withLabels(labels(request, jobName, layerId))
         .addToAnnotations(OperatorConstants.PLAN_HASH_ANNOTATION, planHash);
     if (request.getMetadata().getUid() != null) {
       builder.withOwnerReferences(new OwnerReferenceBuilder()
@@ -108,11 +118,12 @@ public final class ScannerJobFactory {
     return builder.build();
   }
 
-  private static Map<String, String> labels(GenericKubernetesResource request, String jobName) {
+  private static Map<String, String> labels(GenericKubernetesResource request, String jobName, String layerId) {
     Map<String, String> labels = new LinkedHashMap<>();
     labels.put(OperatorConstants.MANAGED_BY_LABEL, OperatorConstants.OPERATOR_NAME);
     labels.put(OperatorConstants.REQUEST_LABEL, KubeNames.dnsLabel(request.getMetadata().getName(), 63));
     labels.put("job-name", KubeNames.dnsLabel(jobName, 63));
+    if (layerId != null && !layerId.isBlank()) labels.put(OperatorConstants.LAYER_LABEL, KubeNames.dnsLabel(layerId, 63));
     return labels;
   }
 

@@ -69,6 +69,19 @@ spec:
                           type: object
                           additionalProperties:
                             type: string
+                    evidence:
+                      type: object
+                      required:
+                        - claimName
+                      properties:
+                        claimName:
+                          type: string
+                          minLength: 1
+                        mountPath:
+                          type: string
+                          default: /var/lib/atlas-evidence
+                        readOnly:
+                          type: boolean
                 credentials:
                   type: object
                   properties:

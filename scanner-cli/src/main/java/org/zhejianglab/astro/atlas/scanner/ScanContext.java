@@ -4,18 +4,18 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.zhejianglab.astro.atlas.core.CoordinateFrame;
 import org.zhejianglab.astro.atlas.core.CoverageMethod;
-import org.zhejianglab.astro.atlas.core.CoverageRole;
+import org.zhejianglab.astro.atlas.core.CoveragePrecision;
 import org.zhejianglab.astro.atlas.core.Healpix;
+import org.zhejianglab.astro.atlas.core.HealpixNesting;
 import org.zhejianglab.astro.atlas.core.InputItem;
-import org.zhejianglab.astro.atlas.core.Modality;
 import org.zhejianglab.astro.atlas.core.ScanPlan;
 import org.zhejianglab.astro.atlas.core.SourceContent;
 import org.zhejianglab.astro.atlas.core.SpatialCoverage;
 
-public final class ScanContext {
+final class ScanContext {
   private final InputItem item;
-  private final Modality modality;
   private final SourceContent content;
   private final ScanPlan plan;
   private final Map<String, SpatialCoverage> coverages = new LinkedHashMap<>();
@@ -24,78 +24,34 @@ public final class ScanContext {
   private int invalidCatalogRows;
   private int validCatalogRows;
 
-  public ScanContext(InputItem item, Modality modality, SourceContent content) {
-    this(item, modality, content, null);
-  }
-
-  public ScanContext(InputItem item, Modality modality, SourceContent content, ScanPlan plan) {
+  ScanContext(InputItem item, SourceContent content, ScanPlan plan) {
     this.item = item;
-    this.modality = modality;
     this.content = content;
     this.plan = plan;
   }
 
-  public InputItem item() {
-    return item;
-  }
+  InputItem item() { return item; }
+  SourceContent content() { return content; }
+  ScanPlan plan() { return plan; }
 
-  public Modality modality() {
-    return modality;
-  }
-
-  public SourceContent content() {
-    return content;
-  }
-
-  public ScanPlan plan() {
-    return plan;
-  }
-
-  public void addCoverage(long cell, CoverageMethod method) {
-    addCoverage(cell, method, CoverageRole.OCCUPANCY, null);
-  }
-
-  public void addCoverage(long cell, CoverageMethod method, CoverageRole role, String quality) {
-    if (cell < 0 || cell >= Healpix.INDEX_CELL_COUNT) throw new IllegalArgumentException("coverage cell is invalid");
-    SpatialCoverage coverage = new SpatialCoverage(item.fileId(), item.sourceUri(), 8, cell,
-        org.zhejianglab.astro.atlas.core.CoordinateFrame.ICRS,
-        org.zhejianglab.astro.atlas.core.HealpixNesting.NESTED, method, role, modality, quality);
+  void addCoverage(int order, long cell, CoverageMethod method, CoveragePrecision precision, Integer sourceOrder) {
+    Healpix.validateCell(order, cell);
+    SpatialCoverage coverage = new SpatialCoverage(plan.layer().layerId(), item.fileId(), item.sourceUri(),
+        order, cell, CoordinateFrame.ICRS, HealpixNesting.NESTED, method,
+        plan.layer().coverageRole(), plan.layer().modality(), precision, sourceOrder);
     coverages.putIfAbsent(coverage.id(), coverage);
   }
 
-  public List<SpatialCoverage> coverages() {
-    return List.copyOf(coverages.values());
+  void addError(String message) {
+    errors.add(message == null || message.isBlank() ? "unknown extraction error" : message);
   }
 
-  public void addError(String message) {
-    errors.add(message);
-  }
+  void addCatalogRow() { catalogRows++; }
+  void addInvalidCatalogRow() { invalidCatalogRows++; }
+  void addValidCatalogRow() { validCatalogRows++; }
 
-  public List<String> errors() {
-    return List.copyOf(errors);
-  }
-
-  public void addCatalogRow() {
-    catalogRows++;
-  }
-
-  public void addInvalidCatalogRow() {
-    invalidCatalogRows++;
-  }
-
-  public void addValidCatalogRow() {
-    validCatalogRows++;
-  }
-
-  public int catalogRows() {
-    return catalogRows;
-  }
-
-  public int invalidCatalogRows() {
-    return invalidCatalogRows;
-  }
-
-  public int validCatalogRows() {
-    return validCatalogRows;
+  ExtractionResult result() {
+    return new ExtractionResult(List.copyOf(coverages.values()), errors,
+        catalogRows, validCatalogRows, invalidCatalogRows);
   }
 }

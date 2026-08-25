@@ -7,18 +7,32 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import org.zhejianglab.astro.atlas.core.CoverageMethod;
-import org.zhejianglab.astro.atlas.core.CoverageRole;
+import org.zhejianglab.astro.atlas.core.CoveragePrecision;
+import org.zhejianglab.astro.atlas.core.ExtractionMode;
 import org.zhejianglab.astro.atlas.core.FileType;
 import org.zhejianglab.astro.atlas.core.Healpix;
+import org.zhejianglab.astro.atlas.core.InputItem;
+import org.zhejianglab.astro.atlas.core.ScanPlan;
+import org.zhejianglab.astro.atlas.core.SourceContent;
 
 /** Reads FITS header blocks only; image and spectral arrays are never loaded. */
-public final class FitsHeaderHandler implements Handler {
+public final class FitsHeaderHandler implements CoverageExtractor {
   private static final int BLOCK_SIZE = 2880;
   private static final int CARD_SIZE = 80;
   private static final int MAX_HEADER_BLOCKS = 256;
 
   @Override
-  public void handle(ScanContext context) throws IOException {
+  public ExtractionResult extract(InputItem item, SourceContent content, ScanPlan plan) {
+    ScanContext context = new ScanContext(item, content, plan);
+    try {
+      extractInto(context);
+    } catch (IOException exception) {
+      context.addError("FITS header read failed: " + exception.getMessage());
+    }
+    return context.result();
+  }
+
+  private void extractInto(ScanContext context) throws IOException {
     if (context.item().fileType() != FileType.FITS) return;
     Map<String, String> header = readHeader(context);
     Double ra;
@@ -30,19 +44,27 @@ public final class FitsHeaderHandler implements Handler {
       context.addError(exception.getMessage());
       return;
     }
-    if (ra == null || dec == null) return;
+    if (ra == null || dec == null) {
+      context.addError("FITS spatial header position is missing");
+      return;
+    }
     try {
-      Wcs wcs = Wcs.from(header);
-      if (wcs == null) {
-        if (Wcs.hasGeometry(header)) {
-          context.addError("unsupported or invalid FITS WCS geometry");
-          return;
-        }
-        context.addCoverage(Healpix.ang2pixNest(8, ra, dec), CoverageMethod.WCS, CoverageRole.FOOTPRINT, "header_point");
+      int outputOrder = context.plan().extraction().outputOrder();
+      if (context.plan().extraction().mode() == ExtractionMode.FITS_HEADER_POSITION) {
+        context.addCoverage(outputOrder, Healpix.ang2pixNest(outputOrder, ra, dec),
+            CoverageMethod.FITS_HEADER_POSITION, CoveragePrecision.ENTRYPOINT_ONLY, null);
         return;
       }
-      for (long cell : wcs.coverageCells()) {
-        context.addCoverage(cell, CoverageMethod.WCS, CoverageRole.FOOTPRINT, "wcs_footprint");
+      Wcs wcs = Wcs.from(header);
+      if (wcs == null) {
+        context.addError(Wcs.hasGeometry(header)
+            ? "unsupported or invalid FITS WCS geometry"
+            : "FITS WCS geometry is incomplete");
+        return;
+      }
+      for (long cell : wcs.coverageCells(outputOrder)) {
+        context.addCoverage(outputOrder, cell, CoverageMethod.FITS_WCS,
+            CoveragePrecision.ESTIMATED, null);
       }
     } catch (IllegalArgumentException exception) {
       context.addError("invalid FITS spatial value: " + exception.getMessage());
@@ -90,7 +112,6 @@ public final class FitsHeaderHandler implements Handler {
 
   /** A linear TAN WCS is sufficient for the header-only MVP and avoids reading image data. */
   private static final class Wcs {
-    private static final double TARGET_SAMPLE_DEG = 0.08;
     private static final int MAX_SAMPLES = 100_000;
 
     private final double ra0;
@@ -151,9 +172,10 @@ public final class FitsHeaderHandler implements Handler {
               || hasAll(header, "CDELT1", "CDELT2"));
     }
 
-    private LinkedHashSet<Long> coverageCells() {
-      double estimatedX = Math.max(1.0, Math.ceil(width * pixelScaleX() / TARGET_SAMPLE_DEG));
-      double estimatedY = Math.max(1.0, Math.ceil(height * pixelScaleY() / TARGET_SAMPLE_DEG));
+    private LinkedHashSet<Long> coverageCells(int order) {
+      double targetSampleDeg = Math.max(0.005, 58.6 / (1 << order));
+      double estimatedX = Math.max(1.0, Math.ceil(width * pixelScaleX() / targetSampleDeg));
+      double estimatedY = Math.max(1.0, Math.ceil(height * pixelScaleY() / targetSampleDeg));
       double estimatedSamples = (estimatedX + 1.0) * (estimatedY + 1.0);
       double reduction = estimatedSamples > MAX_SAMPLES
           ? Math.sqrt(estimatedSamples / MAX_SAMPLES)
@@ -166,7 +188,7 @@ public final class FitsHeaderHandler implements Handler {
         for (int x = 0; x <= xSteps; x++) {
           double pixelX = 0.5 + width * x / (double) xSteps;
           double[] point = world(pixelX, pixelY);
-          cells.add(Healpix.ang2pixNest(8, point[0], point[1]));
+          cells.add(Healpix.ang2pixNest(order, point[0], point[1]));
         }
       }
       return cells;

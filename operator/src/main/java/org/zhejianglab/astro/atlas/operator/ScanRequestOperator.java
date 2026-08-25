@@ -129,6 +129,12 @@ public final class ScanRequestOperator implements AutoCloseable {
       Job job = client.batch().v1().jobs().inNamespace(namespace).withName(jobName).get();
       if (job == null) {
         if (terminalForJob(current, jobName)) return;
+        if (hasRunningLayerJob(namespace, parsed.spec().plan().layer().layerId(), jobName)) {
+          updateStatus(resource, current, JobStatusMapper.status("WAITING", jobName,
+              "LayerUpdateInProgress", "another non-terminal Job is refreshing this layer",
+              generation(current), Map.of("layerId", parsed.spec().plan().layer().layerId())));
+          return;
+        }
         client.batch().v1().jobs().inNamespace(namespace)
             .resource(jobFactory.scannerJob(current, namespace, jobName, configMapName, parsed.spec(), plan)).create();
         updateStatus(resource, current, JobStatusMapper.status("SUBMITTED", jobName, null, null,
@@ -173,6 +179,16 @@ public final class ScanRequestOperator implements AutoCloseable {
     } catch (Exception exception) {
       return Map.of();
     }
+  }
+
+  private boolean hasRunningLayerJob(String namespace, String layerId, String currentJobName) {
+    List<Job> jobs = client.batch().v1().jobs().inNamespace(namespace)
+        .withLabel(OperatorConstants.LAYER_LABEL, KubeNames.dnsLabel(layerId, 63)).list().getItems();
+    if (jobs == null) return false;
+    return jobs.stream()
+        .filter(candidate -> candidate.getMetadata() != null && !currentJobName.equals(candidate.getMetadata().getName()))
+        .map(JobStatusMapper::observe)
+        .anyMatch(observation -> !terminal(observation.phase()));
   }
 
   private static Map<String, Object> invalidStatus(GenericKubernetesResource resource, String message) {

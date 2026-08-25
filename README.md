@@ -11,8 +11,8 @@ The local vertical slice and remote adapters are implemented and covered by modu
 The build has five runtime modules plus one shared remote adapter:
 
 - `spatial-core`: astronomy domain types, HEALPix/WCS calculations, plan validation, index documents, and query-cell normalization.
-- `index-elasticsearch`: JDK HTTP Elasticsearch writer/reader for the two fixed indices.
-- `scanner-cli`: local and S3-compatible source enumeration, in-process Handler pipeline, and scan execution.
+- `index-elasticsearch`: JDK HTTP Elasticsearch writer/reader for the three fixed current-state indices.
+- `scanner-cli`: local and S3-compatible source enumeration, compiled CoverageExtractor resolution, and scan execution.
 - `query-api`: a small read-only HTTP service for point, cone, and HEALPix searches.
 - `operator`: a thin Kubernetes adapter that creates scanner Jobs from `ScanRequest` resources and reports status. It contains no scanning logic.
 

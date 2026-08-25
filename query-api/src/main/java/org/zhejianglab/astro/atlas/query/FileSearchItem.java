@@ -11,8 +11,6 @@ public record FileSearchItem(
     String fileType,
     Long sizeBytes,
     Instant lastModified,
-    String modality,
-    String spatialStatus,
     List<MatchingCoverage> matchingCoverage) {
   public FileSearchItem {
     matchingCoverage = matchingCoverage == null ? List.of() : List.copyOf(matchingCoverage);
@@ -26,8 +24,6 @@ public record FileSearchItem(
         file.fileType().name(),
         file.sizeBytes(),
         file.lastModified(),
-        file.modality() == null ? null : file.modality().value(),
-        file.spatialStatus().value(),
         matchingCoverage);
   }
 }

@@ -28,4 +28,20 @@ class QueryRequestParserTest {
     assertEquals(ConeQuery.class, query.getClass());
     assertEquals("opaque", query.cursor());
   }
+
+  @Test
+  void parsesExplicitLayerOrderAndPixels() {
+    long pixel = 12L;
+    var lookup = QueryRequestParser.parseCoverageLookup("/v2/files/healpix",
+        "layers=desi,csst&order=4&pixels=" + pixel + ",13&limit=20");
+    assertEquals(java.util.Set.of("desi", "csst"), lookup.layerIds());
+    assertEquals(4, lookup.order());
+    assertEquals(java.util.Set.of(pixel, 13L), lookup.pixels());
+    assertEquals(20, lookup.limit());
+  }
+
+  @Test
+  void diagnosticPointRequiresLayers() {
+    assertThrows(ApiException.class, () -> QueryRequestParser.parseDiagnostic("/v1/files/point", "ra=180&dec=0"));
+  }
 }

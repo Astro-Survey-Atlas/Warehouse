@@ -1,107 +1,68 @@
 # Implementation Plan
 
-## Delivery Strategy
+This file is the canonical progress ledger. Update it when a phase passes its
+gate; `HANDOFF.md` records only the latest operational continuation point.
 
-Build one narrow vertical slice first, then add Kubernetes orchestration. The Operator is retained in the product, but the scientific contract must be executable and testable without a cluster before the Operator can add value.
+## Baseline
 
-## Phase 0: Contracts And Build Skeleton
+- [x] Local scanner, S3/OSS adapters, FITS/catalog extraction, ES adapter, and
+  diagnostic query vertical slice.
+- [x] Thin Operator, ScanRequest CRD, immutable ConfigMap/Job translation,
+  Secret projection, container packaging, and k3s smoke test.
+- [x] Baseline checkpoint `effa3c3`; 42 tests passing before redesign.
 
-Deliver:
+## Phase 1: Contracts
 
-- Root Maven build using Java 17.
-- `spatial-core`, `scanner-cli`, `query-api` module skeletons.
-- Context, requirements, boundary, architecture, ScanPlan, index, and query contracts kept current.
-- Test conventions and local fixture layout.
+- [x] Define CoverageLayer, FileAsset, SpatialCoverage, ExtractionMode,
+  SourceSnapshot, Entrypoint, and reserved SourceUnit.
+- [x] Supersede fixed-order/history ADRs and record internal pipeline ownership.
+- [x] Publish ScanPlan v2, multi-order index, query, and Operator target contracts.
 
-Completion criterion: `mvn test` runs from the root and all module dependencies point through `spatial-core`.
+Gate: every document describes current layer state, actual order/precision, and
+`ast_*` isolation without public Handler ordering.
 
-## Phase 1: `spatial-core`
+## Phase 2: Core And Scanner
 
-Deliver:
+- [x] Implement LayerSpec, ExtractionSpec, controlled modality/precision, layer
+  state, multi-order SpatialCoverage, and Plan v2 validation.
+- [x] Replace HandlerFactory with CoverageExtractor resolution for four modes.
+- [x] Compute source inventory hash and emit normalized scan/error evidence.
+- [x] Run layer refresh through lease, deletion, batches, verification, and
+  ACTIVE/FAILED completion.
 
-- Domain value types for FileAsset, SpatialCoverage, InputItem, Modality, ScanPlan, MetadataRecord, and SpatialQuery.
-- Plan and query validation.
-- Stable source URI canonicalization and FileAsset ID derivation.
-- HEALPix conversion using ICRS and NESTED order 8.
-- FITS header/WCS spatial extraction.
-- CSV/TSV coordinate and HEALPix extraction contracts.
-- FileAsset and SpatialCoverage document models.
-- Coverage candidate normalization and de-duplication.
+Gate: local FITS and catalog fixtures prove mode semantics, current replacement,
+explicit order, errors, and no scientific-array reads.
 
-Completion criterion: deterministic unit tests cover valid and invalid coordinate, WCS, catalog, ID, plan, and index-document cases without a network or Kubernetes dependency.
+## Phase 3: Persistence And Reads
 
-## Phase 2: `scanner-cli`
+- [x] Add strict layer/file/coverage mappings and layer-scoped adapter methods.
+- [x] Implement active-layer, exact-order HEALPix lookup and FileAsset join.
+- [x] Preserve point/cone diagnostics without using them as storage semantics.
 
-Deliver:
+Gate: fake-ES tests cover lock conflict/takeover, layer delete, failure hiding,
+multi-order reads, stable cursor, truncation, and shared FileAsset IDs.
 
-- Plan JSON loading and validation.
-- Local filesystem enumeration first.
-- S3 and OSS source adapters behind the same source seam.
-- Ordered in-process Handler pipeline.
-- FITS, CSV/TSV, default asset, coverage normalization, and header-only spectral extension points.
-- Elasticsearch bulk writer with bounded batches, retry policy, stable upserts, and redacted summaries.
-- Local fixture command that produces the new indices.
+## Phase 4: Operator And Deployment
 
-Completion criterion: a local FITS fixture and a local CSV/TSV fixture produce FileAsset and deduplicated SpatialCoverage documents through the same scanner path; a spectral fixture is indexed without reading its scientific array.
+- [x] Migrate CRD examples and parser to Plan v2.
+- [x] Add same-layer Job waiting and expose snapshot/evidence summary fields.
+- [x] Mount an explicit evidence PVC in scanner Jobs and reject paths outside
+  its mount root.
+- [x] Rebuild only pre-release `ast_*` mappings; live k3s smoke rerun remains an
+  environment-dependent deployment step.
 
-## Phase 3: `query-api`
+Gate: Operator tests and live smoke update only the three `ast_*` indices; all
+legacy `astro_*` resources remain unchanged, and persisted evidence has an
+explicit PVC/object-store mount.
 
-Deliver:
+## Phase 5: Contract Probes And Assets Cutover
 
-- Lightweight Java HTTP process.
-- Health/readiness endpoints.
-- Point, cone, and HEALPix endpoints.
-- Stable cursor pagination and query de-duplication.
-- Elasticsearch read adapter and safe error responses.
+- [ ] Probe HST image WCS, SDSS spectral FITS, Gaia catalog, and HI4PI cube
+  headers/catalog metadata, recording unsupported cases as evidence.
+- [ ] Verify Assets direct lookup of ACTIVE layers, files, modality, order,
+  precision, entrypoint fallback, and truncation against the configured
+  deployment endpoint.
+- [x] Update handoff and cutover runbook; do not migrate historical results.
 
-Completion criterion: an integration test indexes fixture documents, calls every query type, verifies de-duplicated results and cursor continuation, and proves the API has no write path.
-
-## Phase 4: Operator Adapter
-
-Deliver:
-
-- Astronomy-specific `ScanRequest` CRD at `atlas.zhejianglab.org/v1alpha1`.
-- Reconciler that validates references and creates a scanner Job.
-- Secret reference propagation without copying secret values into CR status or logs.
-- Job status mapping and scanner summary propagation.
-- Explicit retry, concurrency, and cleanup policy for the Job resource.
-- Kubernetes manifests, container runner packaging, and RBAC for the Operator and scanner Job.
-
-Completion criterion: pure module tests verify plan translation, Secret projection, Job translation, status mapping, and summary extraction; checked-in manifests submit one scan request and observe a scanner Job. A live cluster integration test remains environment-gated.
-
-## Phase 5: Deployment Hardening
-
-Deliver:
-
-- Container packaging for scanner and query API.
-- Elasticsearch index templates and deployment checks.
-- S3/OSS credential reference examples without secret values.
-- Resource, timeout, and bulk settings.
-- Operational runbook and failure diagnosis.
-
-The default deployment mode is external Elasticsearch to keep the initial footprint small. A bundled Elasticsearch subchart is optional and should be enabled only when a dedicated namespace and persistent resources are available.
-
-Completion criterion: a clean environment can install and verify the strict templates, deploy the query API and Operator, run a fixture or configured scan, and query the new indices without touching the legacy repository or legacy indices. The template and verification implementation, container runner packaging, Operator manifests, and a live scanner Job smoke path are now present; query API deployment and optional Helm packaging remain hardening work.
-
-## Reuse From Legacy
-
-Copy and simplify proven algorithms only after their external behavior is covered in the new module:
-
-- HEALPix conversion and validation.
-- FITS header/WCS extraction.
-- CSV/TSV spatial-column handling.
-- S3/OSS/local enumeration.
-- Elasticsearch bulk batching, retry, and stable upsert behavior.
-
-Do not copy the legacy CRD hierarchy, Flink/Cron execution chain, Kafka residence workflow, or broad task status model into the new core.
-
-## Verification Commands
-
-The initial repository must make these commands truthful before they are documented as required:
-
-```text
-mvn test
-mvn package
-```
-
-Additional integration commands should be added only when the corresponding environment and test profile exist.
+Gate: `mvn test`, `mvn package`, template verification, and targeted smoke tests
+all pass from a clean checkout plus configured external services.

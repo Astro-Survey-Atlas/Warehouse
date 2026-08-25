@@ -1,6 +1,7 @@
 package org.zhejianglab.astro.atlas.es;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -11,55 +12,96 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
-import org.zhejianglab.astro.atlas.core.CoordinateFrame;
+import org.zhejianglab.astro.atlas.core.CoverageLayer;
+import org.zhejianglab.astro.atlas.core.CoverageLookup;
 import org.zhejianglab.astro.atlas.core.CoverageMethod;
+import org.zhejianglab.astro.atlas.core.CoveragePrecision;
 import org.zhejianglab.astro.atlas.core.CoverageRole;
+import org.zhejianglab.astro.atlas.core.CoordinateFrame;
 import org.zhejianglab.astro.atlas.core.FileAsset;
 import org.zhejianglab.astro.atlas.core.FileType;
 import org.zhejianglab.astro.atlas.core.Healpix;
 import org.zhejianglab.astro.atlas.core.HealpixNesting;
+import org.zhejianglab.astro.atlas.core.IndexContract;
+import org.zhejianglab.astro.atlas.core.LayerSpec;
+import org.zhejianglab.astro.atlas.core.LayerState;
 import org.zhejianglab.astro.atlas.core.Modality;
 import org.zhejianglab.astro.atlas.core.SourceIdentity;
 import org.zhejianglab.astro.atlas.core.SpatialCoverage;
-import org.zhejianglab.astro.atlas.core.SpatialStatus;
 
 class ElasticsearchAdapterTest {
   @Test
-  void writesFixedIndicesAndReadsCoverageThenFile() throws Exception {
+  void writesThreeCurrentStateDocumentsAndReadsMultiOrderCoverage() throws Exception {
     String sourceUri = "s3://survey/image.fits";
-    String fileId = SourceIdentity.fileId(sourceUri);
-    long cell = Healpix.ang2pixNest(8, 180.25, -2.5);
-    FileAsset file = new FileAsset(fileId, sourceUri, "image.fits", "s3://survey", FileType.FITS,
-        10L, null, Modality.of("image"), SpatialStatus.KNOWN, List.of(cell), Instant.parse("2026-01-02T03:04:05Z"));
-    SpatialCoverage coverage = new SpatialCoverage(fileId, sourceUri, 8, cell, CoordinateFrame.ICRS,
-        HealpixNesting.NESTED, CoverageMethod.WCS, CoverageRole.FOOTPRINT, Modality.of("image"), null);
-    AtomicReference<String> lastBody = new AtomicReference<>();
-    AtomicInteger bulkRequests = new AtomicInteger();
+    FileAsset file = file(sourceUri);
+    long cell = Healpix.ang2pixNest(4, 180.25, -2.5);
+    CoverageLayer layer = activeLayer("image-layer", List.of(4, 8));
+    SpatialCoverage coverage = coverage(layer.layerId(), file, 4, cell);
+    AtomicReference<String> bulk = new AtomicReference<>();
     HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-    server.createContext("/", exchange -> handle(exchange, file, coverage, lastBody, bulkRequests));
+    server.createContext("/", exchange -> handle(exchange, layer, file, coverage, bulk));
     server.start();
-    try (ElasticsearchAdapter adapter = new ElasticsearchAdapter("http://127.0.0.1:" + server.getAddress().getPort(), "user", "secret")) {
+    try (ElasticsearchAdapter adapter = adapter(server)) {
+      adapter.saveLayer(layer);
+      assertTrue(bulk.get().contains(IndexContract.LAYER_INDEX));
       adapter.upsertFileAsset(file);
-      assertTrue(lastBody.get().contains("ast_file_index_v1"));
-      assertTrue(lastBody.get().contains(fileId));
-      assertTrue(!lastBody.get().contains("secret"));
-
+      assertTrue(bulk.get().contains(IndexContract.FILE_INDEX));
       adapter.upsertCoverage(coverage);
-      assertTrue(lastBody.get().contains("ast_coverage_index_v1"));
-      assertTrue(lastBody.get().contains(coverage.id()));
+      assertTrue(bulk.get().contains(IndexContract.COVERAGE_INDEX));
 
-      var page = adapter.searchCoverage(List.of(cell), 1, null);
+      var foundLayers = adapter.findLayers(List.of(layer.layerId()));
+      assertEquals(1, foundLayers.size());
+      var page = adapter.searchCoverage(CoverageLookup.of(List.of(layer.layerId()), 4, List.of(cell), 1, null));
       assertEquals(1, page.items().size());
-      assertEquals(fileId, page.items().get(0).sourceFileId());
-      assertTrue(page.nextCursor() != null);
+      assertEquals(4, page.items().get(0).healpixOrder());
+      assertNotNull(page.nextCursor());
+      assertThrows(IllegalArgumentException.class, () -> adapter.searchCoverage(
+          CoverageLookup.of(List.of(layer.layerId()), 4, List.of(cell + 1), 1, page.nextCursor())));
+      assertEquals(1, adapter.findFiles(List.of(file.fileId())).size());
+    } finally {
+      server.stop(0);
+    }
+  }
 
-      var files = adapter.findFiles(List.of(fileId));
-      assertEquals(1, files.size());
-      assertEquals(fileId, files.iterator().next().fileId());
+  @Test
+  void deletesOnlyCoverageForTheRequestedLayer() throws Exception {
+    AtomicReference<String> body = new AtomicReference<>();
+    AtomicReference<String> path = new AtomicReference<>();
+    HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext("/", exchange -> {
+      path.set(exchange.getRequestURI().getPath());
+      body.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+      respond(exchange, "{\"deleted\":1}");
+    });
+    server.start();
+    try (ElasticsearchAdapter adapter = adapter(server)) {
+      adapter.deleteCoverageForLayer("layer-a");
+      assertTrue(body.get().contains("layer_id"));
+      assertTrue(body.get().contains("layer-a"));
+      assertEquals("/" + IndexContract.COVERAGE_INDEX + "/_delete_by_query", path.get());
+    } finally {
+      server.stop(0);
+    }
+  }
+
+  @Test
+  void rejectsUnexpiredLeaseAndAcceptsExpiredLease() throws Exception {
+    String runId = "existing-run";
+    AtomicReference<String> lease = new AtomicReference<>("2099-01-01T00:00:00Z");
+    HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext("/", exchange -> {
+      String source = "{\"layer_id\":\"image-layer\",\"state\":\"UPDATING\",\"scan_run_id\":\""
+          + runId + "\",\"lease_expires_at\":\"" + lease.get() + "\"}";
+      respond(exchange, "{\"found\":true,\"_source\":" + source + "}");
+    });
+    server.start();
+    try (ElasticsearchAdapter adapter = adapter(server)) {
+      CoverageLayer candidate = CoverageLayer.updating(layerSpec("image-layer"), "new-run", Instant.now().plusSeconds(60));
+      assertTrue(!adapter.tryBeginLayerUpdate(candidate));
+      lease.set("2000-01-01T00:00:00Z");
+      assertTrue(adapter.tryBeginLayerUpdate(candidate));
     } finally {
       server.stop(0);
     }
@@ -67,22 +109,18 @@ class ElasticsearchAdapterTest {
 
   @Test
   void retriesOnlyRetryableBulkItems() throws Exception {
-    String sourceUri = "s3://survey/retry.fits";
-    FileAsset file = file(sourceUri);
-    AtomicInteger requests = new AtomicInteger();
+    AtomicReference<Integer> calls = new AtomicReference<>(0);
     HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
     server.createContext("/", exchange -> {
-      exchange.getRequestBody().readAllBytes();
-      int request = requests.incrementAndGet();
-      String response = request == 1
+      int call = calls.updateAndGet(value -> value + 1);
+      respond(exchange, call == 1
           ? "{\"errors\":true,\"items\":[{\"index\":{\"status\":429}}]}"
-          : "{\"errors\":false,\"items\":[{\"index\":{\"status\":201}}]}";
-      respond(exchange, response);
+          : "{\"errors\":false,\"items\":[{\"index\":{\"status\":201}}]}");
     });
     server.start();
-    try (ElasticsearchAdapter adapter = new ElasticsearchAdapter("http://127.0.0.1:" + server.getAddress().getPort(), null, null)) {
-      adapter.upsertFileAsset(file);
-      assertEquals(2, requests.get());
+    try (ElasticsearchAdapter adapter = adapter(server)) {
+      adapter.upsertFileAsset(file("s3://survey/retry.fits"));
+      assertEquals(2, calls.get());
     } finally {
       server.stop(0);
     }
@@ -90,71 +128,58 @@ class ElasticsearchAdapterTest {
 
   @Test
   void splitsBulkRequestsAtTheRecordLimit() throws Exception {
-    AtomicInteger requests = new AtomicInteger();
-    List<Integer> requestSizes = new ArrayList<>();
+    AtomicReference<Integer> requests = new AtomicReference<>(0);
+    List<Integer> sizes = new ArrayList<>();
     HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
     server.createContext("/", exchange -> {
       String request = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-      int records = (int) request.lines().filter(line -> line.contains("\"_index\"" )).count();
-      requestSizes.add(records);
-      requests.incrementAndGet();
+      int records = (int) request.lines().filter(line -> line.contains("\"_index\"")).count();
+      sizes.add(records);
+      requests.updateAndGet(value -> value + 1);
       StringBuilder response = new StringBuilder("{\"errors\":false,\"items\":[");
       for (int index = 0; index < records; index++) {
         if (index > 0) response.append(',');
         response.append("{\"index\":{\"status\":201}}");
       }
-      response.append("]}");
-      respond(exchange, response.toString());
+      respond(exchange, response + "]}");
     });
     server.start();
-    try (ElasticsearchAdapter adapter = new ElasticsearchAdapter("http://127.0.0.1:" + server.getAddress().getPort(), null, null)) {
+    try (ElasticsearchAdapter adapter = adapter(server)) {
       List<FileAsset> files = new ArrayList<>();
       for (int index = 0; index < 501; index++) files.add(file("s3://survey/bulk-" + index + ".fits"));
       adapter.upsertBatch(files, List.of());
       assertEquals(2, requests.get());
-      assertEquals(List.of(500, 1), requestSizes);
+      assertEquals(List.of(500, 1), sizes);
     } finally {
       server.stop(0);
     }
   }
 
   @Test
-  void installsTemplatesAndVerifiesStrictMappings() throws Exception {
-    AtomicInteger templateRequests = new AtomicInteger();
-    AtomicInteger mappingRequests = new AtomicInteger();
+  void installsAndVerifiesThreeStrictMappings() throws Exception {
+    List<String> paths = new ArrayList<>();
     HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
     server.createContext("/", exchange -> {
       String path = exchange.getRequestURI().getPath();
-      if (path.startsWith("/_index_template/")) {
-        String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-        assertTrue(body.contains("\"dynamic\":\"strict\""));
-        templateRequests.incrementAndGet();
-        respond(exchange, "{\"acknowledged\":true}");
-        return;
-      }
+      paths.add(path);
       if (path.endsWith("/_mapping")) {
-        mappingRequests.incrementAndGet();
-        String index = path.startsWith("/" + org.zhejianglab.astro.atlas.core.IndexContract.FILE_INDEX)
-            ? org.zhejianglab.astro.atlas.core.IndexContract.FILE_INDEX
-            : org.zhejianglab.astro.atlas.core.IndexContract.COVERAGE_INDEX;
+        String index = path.substring(1, path.indexOf("/_mapping"));
         respond(exchange, mappingJson(index));
-        return;
-      }
-      respond(exchange, "{\"status\":\"ok\"}");
+      } else respond(exchange, "{\"acknowledged\":true}");
     });
     server.start();
-    try (ElasticsearchAdapter adapter = new ElasticsearchAdapter("http://127.0.0.1:" + server.getAddress().getPort(), null, null)) {
+    try (ElasticsearchAdapter adapter = adapter(server)) {
       adapter.installIndexTemplates();
       adapter.verifyIndexMappings();
-      assertEquals(2, templateRequests.get());
-      assertEquals(2, mappingRequests.get());
+      assertEquals(3, paths.stream().filter(path -> path.startsWith("/_index_template/")).count());
+      assertEquals(3, paths.stream().filter(path -> path.endsWith("/_mapping")).count());
     } finally {
       server.stop(0);
     }
   }
 
   @Test
-  void recreatesOnlyFixedIndicesWithZeroReplicas() throws Exception {
+  void recreatesOnlyTheThreeAstIndices() throws Exception {
     List<String> paths = new ArrayList<>();
     HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
     server.createContext("/", exchange -> {
@@ -163,50 +188,119 @@ class ElasticsearchAdapterTest {
       respond(exchange, "{\"acknowledged\":true}");
     });
     server.start();
-    try (ElasticsearchAdapter adapter = new ElasticsearchAdapter("http://127.0.0.1:" + server.getAddress().getPort(), null, null)) {
+    try (ElasticsearchAdapter adapter = adapter(server)) {
       adapter.recreateFixedIndices();
-      assertEquals(List.of(
-          "DELETE /ast_file_index_v1",
-          "DELETE /ast_coverage_index_v1",
-          "PUT /ast_file_index_v1",
-          "PUT /ast_coverage_index_v1"), paths);
+      assertEquals(6, paths.size());
+      assertTrue(paths.contains("DELETE /" + IndexContract.LAYER_INDEX));
+      assertTrue(paths.contains("DELETE /" + IndexContract.FILE_INDEX));
+      assertTrue(paths.contains("DELETE /" + IndexContract.COVERAGE_INDEX));
     } finally {
       server.stop(0);
     }
   }
 
   @Test
-  void reportsPermanentBulkItemIdsWithoutExposingCredentials() throws Exception {
-    String sourceUri = "s3://survey/bad.fits";
-    FileAsset file = file(sourceUri);
-    AtomicBoolean sawSecret = new AtomicBoolean();
+  void reportsPermanentBulkIdsWithoutCredentialMaterial() throws Exception {
+    FileAsset file = file("s3://survey/bad.fits");
     HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
     server.createContext("/", exchange -> {
       String request = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-      sawSecret.set(request.contains("secret"));
-      respond(exchange, "{\"errors\":true,\"items\":[{\"index\":{\"status\":400,\"error\":{\"type\":\"mapper_parsing_exception\"}}}]}" );
+      assertTrue(!request.contains("secret"));
+      respond(exchange, "{\"errors\":true,\"items\":[{\"index\":{\"status\":400}}]}");
     });
     server.start();
     try (ElasticsearchAdapter adapter = new ElasticsearchAdapter("http://127.0.0.1:" + server.getAddress().getPort(), "user", "secret")) {
-      ElasticsearchAdapter.BulkWriteException failure = assertThrows(
-          ElasticsearchAdapter.BulkWriteException.class, () -> adapter.upsertFileAsset(file));
-      assertEquals(1, failure.failedRecordCount());
-      assertTrue(failure.failedDocumentIds().contains(file.fileId()));
+      ElasticsearchAdapter.BulkWriteException failure = assertThrows(ElasticsearchAdapter.BulkWriteException.class,
+          () -> adapter.upsertFileAsset(file));
+      assertEquals(List.of(file.fileId()), failure.failedDocumentIds());
       assertTrue(!failure.getMessage().contains("secret"));
-      assertTrue(!sawSecret.get());
     } finally {
       server.stop(0);
     }
   }
 
-  private static FileAsset file(String sourceUri) {
-    return new FileAsset(SourceIdentity.fileId(sourceUri), sourceUri, "fixture.fits", "s3://survey",
-        FileType.FITS, 10L, null, Modality.of("image"), SpatialStatus.UNKNOWN, List.of(), Instant.now());
+  private static ElasticsearchAdapter adapter(HttpServer server) {
+    return new ElasticsearchAdapter("http://127.0.0.1:" + server.getAddress().getPort(), null, null);
+  }
+
+  private static FileAsset file(String uri) {
+    return new FileAsset(SourceIdentity.fileId(uri), uri, uri.substring(uri.lastIndexOf('/') + 1), "s3://survey",
+        FileType.FITS, 10L, null, Instant.parse("2026-01-02T03:04:05Z"));
+  }
+
+  private static SpatialCoverage coverage(String layerId, FileAsset file, int order, long cell) {
+    return new SpatialCoverage(layerId, file.fileId(), file.sourceUri(), order, cell, CoordinateFrame.ICRS,
+        HealpixNesting.NESTED, CoverageMethod.FITS_WCS, CoverageRole.FOOTPRINT, Modality.IMAGE,
+        CoveragePrecision.ESTIMATED, null);
+  }
+
+  private static CoverageLayer activeLayer(String layerId, List<Integer> orders) {
+    CoverageLayer updating = CoverageLayer.updating(layerSpec(layerId), "run-1", Instant.now().plusSeconds(60));
+    return updating.active("snapshot", orders, 1, 1, 0);
+  }
+
+  private static LayerSpec layerSpec(String layerId) {
+    return new LayerSpec(layerId, "survey", "release", "product", Modality.IMAGE, CoverageRole.FOOTPRINT, "https://example.invalid");
+  }
+
+  private static void handle(HttpExchange exchange, CoverageLayer layer, FileAsset file,
+      SpatialCoverage coverage, AtomicReference<String> bulk) throws java.io.IOException {
+    String path = exchange.getRequestURI().getPath();
+    String request = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+    if (path.endsWith("/_bulk")) {
+      bulk.set(request);
+      int records = (int) request.lines().filter(line -> line.contains("\"_index\"")).count();
+      StringBuilder response = new StringBuilder("{\"errors\":false,\"items\":[");
+      for (int index = 0; index < records; index++) {
+        if (index > 0) response.append(',');
+        response.append("{\"index\":{\"status\":201}}");
+      }
+      respond(exchange, response + "]}");
+    } else if (path.contains("/_mget") && path.startsWith("/" + IndexContract.LAYER_INDEX)) {
+      respond(exchange, "{\"docs\":[{\"found\":true,\"_source\":" + layerJson(layer) + "}]}");
+    } else if (path.contains("/_mget")) {
+      respond(exchange, "{\"docs\":[{\"found\":true,\"_source\":" + fileJson(file) + "}]}");
+    } else if (path.endsWith("/_search")) {
+      respond(exchange, "{\"hits\":{\"hits\":[{\"sort\":[\"" + layer.layerId() + "\",\"" + file.fileId()
+          + "\"," + coverage.healpixCell() + ",\"footprint\"],\"_source\":" + coverageJson(coverage) + "}]}}");
+    } else if (path.contains("/_doc/")) {
+      respond(exchange, "{\"found\":true,\"_source\":" + layerJson(layer) + "}");
+    } else respond(exchange, "{\"acknowledged\":true}");
+  }
+
+  private static String layerJson(CoverageLayer layer) {
+    return "{\"layer_id\":\"" + layer.layerId() + "\",\"survey_id\":\"" + layer.surveyId()
+        + "\",\"release_id\":\"" + layer.releaseId() + "\",\"product_id\":\"" + layer.productId()
+        + "\",\"modality\":\"" + layer.modality().value() + "\",\"coverage_role\":\""
+        + layer.coverageRole().value() + "\",\"entrypoint\":\"https://example.invalid\",\"state\":\""
+        + layer.state().value() + "\",\"scan_run_id\":\"" + layer.scanRunId()
+        + "\",\"lease_expires_at\":" + jsonString(layer.leaseExpiresAt()) + ",\"source_snapshot_sha256\":\"snapshot\""
+        + ",\"available_orders\":" + layer.availableOrders() + ",\"file_count\":1,\"coverage_count\":1,\"error_count\":0"
+        + ",\"error_summary\":null,\"updated_at\":\"" + layer.updatedAt() + "\"}";
+  }
+
+  private static String coverageJson(SpatialCoverage coverage) {
+    return "{\"layer_id\":\"" + coverage.layerId() + "\",\"source_file_id\":\"" + coverage.sourceFileId()
+        + "\",\"source_uri\":\"" + coverage.sourceUri() + "\",\"healpix_order\":" + coverage.healpixOrder()
+        + ",\"healpix_cell\":" + coverage.healpixCell() + ",\"coverage_method\":\""
+        + coverage.coverageMethod().value() + "\",\"coverage_role\":\"" + coverage.coverageRole().value()
+        + "\",\"modality\":\"" + coverage.modality().value() + "\",\"precision\":\""
+        + coverage.precision().value() + "\",\"source_order\":null}";
+  }
+
+  private static String fileJson(FileAsset file) {
+    return "{\"file_id\":\"" + file.fileId() + "\",\"source_uri\":\"" + file.sourceUri()
+        + "\",\"file_name\":\"" + file.fileName() + "\",\"parent_uri\":\"" + file.parentUri()
+        + "\",\"file_type\":\"FITS\",\"size_bytes\":10,\"last_modified\":null,\"indexed_at\":\""
+        + file.indexedAt() + "\"}";
+  }
+
+  private static String jsonString(Instant value) {
+    return value == null ? "null" : "\"" + value + "\"";
   }
 
   private static void respond(HttpExchange exchange, String response) throws java.io.IOException {
     byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
-    exchange.getResponseHeaders().set("Content-Type", "application/json");
     exchange.sendResponseHeaders(200, bytes.length);
     try (var output = exchange.getResponseBody()) {
       output.write(bytes);
@@ -214,54 +308,30 @@ class ElasticsearchAdapterTest {
   }
 
   private static String mappingJson(String index) {
-    boolean file = index.equals(org.zhejianglab.astro.atlas.core.IndexContract.FILE_INDEX);
-    String properties = file
-        ? "\"file_id\":{\"type\":\"keyword\"},\"source_uri\":{\"type\":\"keyword\"},"
-            + "\"file_name\":{\"type\":\"keyword\"},\"parent_uri\":{\"type\":\"keyword\"},"
-            + "\"file_type\":{\"type\":\"keyword\"},\"size_bytes\":{\"type\":\"long\"},"
-            + "\"last_modified\":{\"type\":\"date\"},\"modality\":{\"type\":\"keyword\"},"
-            + "\"spatial_status\":{\"type\":\"keyword\"},\"coverage_cells\":{\"type\":\"integer\"},"
-            + "\"indexed_at\":{\"type\":\"date\"}"
-        : "\"source_file_id\":{\"type\":\"keyword\"},\"source_uri\":{\"type\":\"keyword\"},"
-            + "\"healpix_order\":{\"type\":\"integer\"},\"healpix_cell\":{\"type\":\"long\"},"
-            + "\"coordinate_frame\":{\"type\":\"keyword\"},\"nesting\":{\"type\":\"keyword\"},"
-            + "\"coverage_method\":{\"type\":\"keyword\"},\"coverage_role\":{\"type\":\"keyword\"},"
-            + "\"modality\":{\"type\":\"keyword\"},\"quality\":{\"type\":\"keyword\"}";
-    return "{\"" + index + "\":{\"mappings\":{\"dynamic\":\"strict\",\"properties\":{" + properties + "}}}}";
-  }
-
-  private static void handle(HttpExchange exchange, FileAsset file, SpatialCoverage coverage,
-      AtomicReference<String> body, AtomicInteger bulkRequests) throws java.io.IOException {
-    String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-    body.set(requestBody);
-    String path = exchange.getRequestURI().getPath();
-    String response;
-    if (path.endsWith("/_bulk")) {
-      bulkRequests.incrementAndGet();
-      response = "{\"errors\":false,\"items\":[{\"index\":{\"status\":201}}]}";
-    } else if (path.endsWith("/_search")) {
-      response = "{\"hits\":{\"total\":{\"value\":1,\"relation\":\"eq\"},\"hits\":[{\"_id\":\"" + coverage.id() + "\",\"sort\":[\"" + file.fileId() + "\"," + coverage.healpixCell() + ",\"footprint\"],\"_source\":" + jsonCoverage(coverage) + "}]}}";
-    } else if (path.endsWith("/_mget")) {
-      response = "{\"docs\":[{\"found\":true,\"_source\":" + jsonFile(file) + "}]}";
+    String properties;
+    if (IndexContract.LAYER_INDEX.equals(index)) {
+      properties = "\"layer_id\":{\"type\":\"keyword\"},\"survey_id\":{\"type\":\"keyword\"},"
+          + "\"release_id\":{\"type\":\"keyword\"},\"product_id\":{\"type\":\"keyword\"},"
+          + "\"modality\":{\"type\":\"keyword\"},\"coverage_role\":{\"type\":\"keyword\"},"
+          + "\"entrypoint\":{\"type\":\"keyword\"},\"state\":{\"type\":\"keyword\"},"
+          + "\"scan_run_id\":{\"type\":\"keyword\"},\"lease_expires_at\":{\"type\":\"date\"},"
+          + "\"source_snapshot_sha256\":{\"type\":\"keyword\"},\"available_orders\":{\"type\":\"integer\"},"
+          + "\"file_count\":{\"type\":\"long\"},\"coverage_count\":{\"type\":\"long\"},"
+          + "\"error_count\":{\"type\":\"integer\"},\"error_summary\":{\"type\":\"keyword\"},"
+          + "\"updated_at\":{\"type\":\"date\"}";
+    } else if (IndexContract.FILE_INDEX.equals(index)) {
+      properties = "\"file_id\":{\"type\":\"keyword\"},\"source_uri\":{\"type\":\"keyword\"},"
+          + "\"file_name\":{\"type\":\"keyword\"},\"parent_uri\":{\"type\":\"keyword\"},"
+          + "\"file_type\":{\"type\":\"keyword\"},\"size_bytes\":{\"type\":\"long\"},"
+          + "\"last_modified\":{\"type\":\"date\"},\"indexed_at\":{\"type\":\"date\"}";
     } else {
-      response = "{\"status\":\"ok\"}";
+      properties = "\"layer_id\":{\"type\":\"keyword\"},\"source_file_id\":{\"type\":\"keyword\"},"
+          + "\"source_uri\":{\"type\":\"keyword\"},\"healpix_order\":{\"type\":\"integer\"},"
+          + "\"healpix_cell\":{\"type\":\"long\"},\"coordinate_frame\":{\"type\":\"keyword\"},"
+          + "\"nesting\":{\"type\":\"keyword\"},\"coverage_method\":{\"type\":\"keyword\"},"
+          + "\"coverage_role\":{\"type\":\"keyword\"},\"modality\":{\"type\":\"keyword\"},"
+          + "\"precision\":{\"type\":\"keyword\"},\"source_order\":{\"type\":\"integer\"}";
     }
-    byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
-    exchange.getResponseHeaders().set("Content-Type", "application/json");
-    exchange.sendResponseHeaders(200, bytes.length);
-    try (var output = exchange.getResponseBody()) { output.write(bytes); }
-  }
-
-  private static String jsonCoverage(SpatialCoverage coverage) {
-    return "{\"source_file_id\":\"" + coverage.sourceFileId() + "\",\"source_uri\":\"" + coverage.sourceUri()
-        + "\",\"healpix_order\":8,\"healpix_cell\":" + coverage.healpixCell()
-        + ",\"coverage_method\":\"wcs\",\"coverage_role\":\"footprint\",\"modality\":\"image\",\"quality\":null}";
-  }
-
-  private static String jsonFile(FileAsset file) {
-    return "{\"file_id\":\"" + file.fileId() + "\",\"source_uri\":\"" + file.sourceUri()
-        + "\",\"file_name\":\"image.fits\",\"parent_uri\":\"s3://survey\",\"file_type\":\"FITS\",\"size_bytes\":10"
-        + ",\"last_modified\":null,\"modality\":\"image\",\"spatial_status\":\"known\",\"coverage_cells\":[" + file.coverageCells().get(0)
-        + "],\"indexed_at\":\"2026-01-02T03:04:05Z\"}";
+    return "{\"" + index + "\":{\"mappings\":{\"dynamic\":\"strict\",\"properties\":{" + properties + "}}}}";
   }
 }

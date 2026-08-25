@@ -5,12 +5,17 @@ import java.util.List;
 import java.util.Map;
 import org.zhejianglab.astro.atlas.core.IndexContract;
 
-/** Explicit Elasticsearch mappings for the two fixed product indices. */
+/** Explicit strict mappings for the three current-state Warehouse indices. */
 public final class ElasticsearchIndexTemplates {
+  public static final String LAYER_TEMPLATE_NAME = "ast_layer_index_v1_template";
   public static final String FILE_TEMPLATE_NAME = "ast_file_index_v1_template";
   public static final String COVERAGE_TEMPLATE_NAME = "ast_coverage_index_v1_template";
 
   private ElasticsearchIndexTemplates() {}
+
+  public static Map<String, Object> layerTemplate() {
+    return template(LAYER_TEMPLATE_NAME, IndexContract.LAYER_INDEX, layerMappings());
+  }
 
   public static Map<String, Object> fileTemplate() {
     return template(FILE_TEMPLATE_NAME, IndexContract.FILE_INDEX, fileMappings());
@@ -18,6 +23,28 @@ public final class ElasticsearchIndexTemplates {
 
   public static Map<String, Object> coverageTemplate() {
     return template(COVERAGE_TEMPLATE_NAME, IndexContract.COVERAGE_INDEX, coverageMappings());
+  }
+
+  public static Map<String, Object> layerMappings() {
+    Map<String, Object> properties = new LinkedHashMap<>();
+    properties.put("layer_id", keyword());
+    properties.put("survey_id", keyword());
+    properties.put("release_id", keyword());
+    properties.put("product_id", keyword());
+    properties.put("modality", keyword());
+    properties.put("coverage_role", keyword());
+    properties.put("entrypoint", keyword());
+    properties.put("state", keyword());
+    properties.put("scan_run_id", keyword());
+    properties.put("lease_expires_at", Map.of("type", "date"));
+    properties.put("source_snapshot_sha256", keyword());
+    properties.put("available_orders", Map.of("type", "integer"));
+    properties.put("file_count", Map.of("type", "long"));
+    properties.put("coverage_count", Map.of("type", "long"));
+    properties.put("error_count", Map.of("type", "integer"));
+    properties.put("error_summary", keyword());
+    properties.put("updated_at", Map.of("type", "date"));
+    return mappings(properties);
   }
 
   public static Map<String, Object> fileMappings() {
@@ -29,15 +56,13 @@ public final class ElasticsearchIndexTemplates {
     properties.put("file_type", keyword());
     properties.put("size_bytes", Map.of("type", "long"));
     properties.put("last_modified", Map.of("type", "date"));
-    properties.put("modality", keyword());
-    properties.put("spatial_status", keyword());
-    properties.put("coverage_cells", Map.of("type", "integer"));
     properties.put("indexed_at", Map.of("type", "date"));
     return mappings(properties);
   }
 
   public static Map<String, Object> coverageMappings() {
     Map<String, Object> properties = new LinkedHashMap<>();
+    properties.put("layer_id", keyword());
     properties.put("source_file_id", keyword());
     properties.put("source_uri", keyword());
     properties.put("healpix_order", Map.of("type", "integer"));
@@ -47,7 +72,8 @@ public final class ElasticsearchIndexTemplates {
     properties.put("coverage_method", keyword());
     properties.put("coverage_role", keyword());
     properties.put("modality", keyword());
-    properties.put("quality", keyword());
+    properties.put("precision", keyword());
+    properties.put("source_order", Map.of("type", "integer"));
     return mappings(properties);
   }
 

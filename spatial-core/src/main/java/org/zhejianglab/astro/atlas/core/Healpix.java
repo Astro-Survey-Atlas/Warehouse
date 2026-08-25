@@ -5,7 +5,8 @@ import java.util.Set;
 
 /** NESTED HEALPix angular conversion used by the fixed index contract. */
 public final class Healpix {
-  public static final int MAX_ORDER = 12;
+  public static final int MAX_ORDER = 29;
+  public static final int MAX_COMPUTED_ORDER = 12;
   public static final int INDEX_ORDER = IndexContract.ORDER;
   public static final long INDEX_CELL_COUNT = 12L * (1L << (2 * INDEX_ORDER));
 
@@ -13,6 +14,9 @@ public final class Healpix {
 
   public static long ang2pixNest(int order, double raDeg, double decDeg) {
     validateOrder(order);
+    if (order > MAX_COMPUTED_ORDER) {
+      throw new IllegalArgumentException("computed HEALPix order must be 0.." + MAX_COMPUTED_ORDER);
+    }
     validateDeclination(decDeg);
     int nside = 1 << order;
     double phi = Math.toRadians(normalizeRa(raDeg));
@@ -113,8 +117,14 @@ public final class Healpix {
     return value < 0 ? value + 360.0 : value;
   }
 
-  private static void validateOrder(int order) {
-    if (order < 0 || order > MAX_ORDER) throw new IllegalArgumentException("HEALPix order must be 0..12");
+  public static void validateOrder(int order) {
+    if (order < 0 || order > MAX_ORDER) throw new IllegalArgumentException("HEALPix order must be 0..29");
+  }
+
+  public static void validateCell(int order, long pixel) {
+    validateOrder(order);
+    long count = 12L * (1L << (2 * order));
+    if (pixel < 0 || pixel >= count) throw new IllegalArgumentException("HEALPix pixel is outside its order");
   }
 
   private static long spread(int value) {

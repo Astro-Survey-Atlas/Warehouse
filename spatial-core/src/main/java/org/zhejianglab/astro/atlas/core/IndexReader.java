@@ -3,7 +3,9 @@ package org.zhejianglab.astro.atlas.core;
 import java.util.Collection;
 
 public interface IndexReader {
-  Page<SpatialCoverage> searchCoverage(Collection<Long> order8Cells, int limit, String cursor);
+  Collection<CoverageLayer> findLayers(Collection<String> layerIds);
+
+  Page<SpatialCoverage> searchCoverage(CoverageLookup lookup);
 
   Collection<FileAsset> findFiles(Collection<String> fileIds);
 

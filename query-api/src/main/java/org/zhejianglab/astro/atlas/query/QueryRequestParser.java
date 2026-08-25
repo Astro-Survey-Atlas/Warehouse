@@ -3,7 +3,11 @@ package org.zhejianglab.astro.atlas.query;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import org.zhejianglab.astro.atlas.core.CoverageLookup;
 import org.zhejianglab.astro.atlas.core.ConeQuery;
 import org.zhejianglab.astro.atlas.core.HealpixQuery;
 import org.zhejianglab.astro.atlas.core.PointQuery;
@@ -24,6 +28,28 @@ public final class QueryRequestParser {
         case "/v1/files/healpix" -> new HealpixQuery(integer(parameters, "order", Integer.MIN_VALUE), longValue(parameters, "pixel"), limit, cursor);
         default -> throw new ApiException(404, "NOT_FOUND", "route was not found", null);
       };
+    } catch (ApiException exception) {
+      throw exception;
+    } catch (IllegalArgumentException exception) {
+      throw ApiException.invalid(exception.getMessage(), null);
+    }
+  }
+
+  public static DiagnosticRequest parseDiagnostic(String route, String rawQuery) {
+    Map<String, String> parameters = parameters(rawQuery);
+    SpatialQuery query = parse(route, rawQuery);
+    return new DiagnosticRequest(query, list(parameters, "layers"));
+  }
+
+  public static CoverageLookup parseCoverageLookup(String route, String rawQuery) {
+    if (!"/v2/files/healpix".equals(route)) throw new ApiException(404, "NOT_FOUND", "route was not found", null);
+    Map<String, String> parameters = parameters(rawQuery);
+    try {
+      Set<String> layers = list(parameters, "layers");
+      int order = integer(parameters, "order", Integer.MIN_VALUE);
+      Set<Long> pixels = longList(parameters, "pixels");
+      int limit = integer(parameters, "limit", QueryLimits.DEFAULT);
+      return new CoverageLookup(layers, order, pixels, limit, parameters.get("cursor"));
     } catch (ApiException exception) {
       throw exception;
     } catch (IllegalArgumentException exception) {
@@ -81,11 +107,41 @@ public final class QueryRequestParser {
     }
   }
 
+  private static Set<String> list(Map<String, String> parameters, String name) {
+    String value = required(parameters, name);
+    Set<String> result = new LinkedHashSet<>();
+    for (String item : value.split(",", -1)) {
+      if (item.isBlank()) throw ApiException.invalid(name + " must not contain blank values", name);
+      result.add(item.trim());
+    }
+    if (result.isEmpty()) throw ApiException.invalid(name + " must not be empty", name);
+    return Set.copyOf(result);
+  }
+
+  private static Set<Long> longList(Map<String, String> parameters, String name) {
+    Set<String> values = list(parameters, name);
+    Set<Long> result = new LinkedHashSet<>();
+    for (String value : values) {
+      try {
+        result.add(Long.parseLong(value));
+      } catch (NumberFormatException exception) {
+        throw ApiException.invalid(name + " must contain integers", name);
+      }
+    }
+    return Set.copyOf(result);
+  }
+
   private static String decode(String value) {
     try {
       return URLDecoder.decode(value, StandardCharsets.UTF_8);
     } catch (IllegalArgumentException exception) {
       throw ApiException.invalid("query parameter is not valid URL encoding", null);
+    }
+  }
+
+  public record DiagnosticRequest(SpatialQuery query, Set<String> layerIds) {
+    public DiagnosticRequest {
+      layerIds = Set.copyOf(layerIds);
     }
   }
 }

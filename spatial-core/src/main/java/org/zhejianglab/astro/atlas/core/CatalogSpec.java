@@ -5,7 +5,8 @@ public record CatalogSpec(
     String raColumn,
     String decColumn,
     String healpixColumn,
-    String healpixOrderColumn) {
+    String healpixOrderColumn,
+    Integer healpixOrder) {
   public CatalogSpec {
     raColumn = normalize(raColumn);
     decColumn = normalize(decColumn);
@@ -14,7 +15,7 @@ public record CatalogSpec(
   }
 
   public static CatalogSpec empty() {
-    return new CatalogSpec(null, null, null, null);
+    return new CatalogSpec(null, null, null, null, null);
   }
 
   private static String normalize(String value) {

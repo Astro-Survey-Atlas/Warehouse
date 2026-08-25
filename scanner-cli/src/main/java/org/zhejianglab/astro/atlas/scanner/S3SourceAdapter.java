@@ -71,7 +71,7 @@ public final class S3SourceAdapter implements SourceAdapter {
       }
       token = response.isTruncated() ? response.nextContinuationToken() : null;
     } while (token != null && !token.isBlank());
-    return items;
+    return items.stream().sorted(java.util.Comparator.comparing(InputItem::sourceUri)).toList();
   }
 
   @Override

@@ -16,6 +16,9 @@ spec:
       limits:
         cpu: "2"
         memory: 4Gi
+    evidence:
+      claimName: atlas-evidence
+      mountPath: /var/lib/atlas-evidence
   credentials:
     source:
       secretName: atlas-source-credentials
@@ -26,7 +29,15 @@ spec:
       usernameKey: username
       passwordKey: password
   plan:
-    version: 1
+    version: 2
+    scanRunId: survey-release-1-20260825
+    layer:
+      layerId: survey-release-1-image
+      surveyId: survey
+      releaseId: release-1
+      productId: image
+      modality: image
+      coverageRole: footprint
     source:
       connector:
         type: oss
@@ -43,11 +54,9 @@ spec:
         - .fit
         - .csv
         - .tsv
-    handlers:
-      - default
-      - fits
-      - catalog
-      - coverage
+    extraction:
+      mode: fits-wcs
+      outputOrder: 8
     sink:
       connector:
         type: elasticsearch
@@ -55,3 +64,5 @@ spec:
         credentialRef:
           usernameEnv: ATLAS_ES_USERNAME
           passwordEnv: ATLAS_ES_PASSWORD
+    evidence:
+      outputPath: /var/lib/atlas-evidence/survey-release-1-20260825

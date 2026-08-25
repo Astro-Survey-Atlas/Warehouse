@@ -52,10 +52,11 @@ public final class SourceIdentity {
     return sha256(canonicalize(sourceUri));
   }
 
-  public static String coverageId(String fileId, int order, long cell, CoverageRole role) {
+  public static String coverageId(String layerId, String fileId, int order, long cell, CoverageRole role) {
+    if (layerId == null || layerId.isBlank()) throw new IllegalArgumentException("layer ID must not be blank");
     if (fileId == null || fileId.isBlank()) throw new IllegalArgumentException("file ID must not be blank");
     if (role == null) throw new IllegalArgumentException("coverage role is required");
-    return sha256(fileId + "\n" + order + "\n" + cell + "\n" + role.value());
+    return sha256(layerId + "\n" + fileId + "\n" + order + "\n" + cell + "\n" + role.value());
   }
 
   public static String sha256(String value) {

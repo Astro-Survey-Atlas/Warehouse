@@ -16,6 +16,8 @@ class ScanRequestSpecParserTest {
     var resource = OperatorTestFixtures.request("catalog-scan");
     Map<String, Object> spec = new LinkedHashMap<>();
     spec.put("plan", mapper.convertValue(OperatorTestFixtures.localPlan(null), Map.class));
+    spec.put("scanner", Map.of("evidence", Map.of("claimName", "atlas-evidence",
+        "mountPath", "/var/lib/atlas-evidence")));
     resource.setAdditionalProperty("spec", spec);
 
     ScanRequestSpecParser.ParsedScanRequest parsed = new ScanRequestSpecParser().parse(resource, "scanner:default");
@@ -26,14 +28,60 @@ class ScanRequestSpecParserTest {
   }
 
   @Test
-  void rejectsUnknownPlanHandlerBeforeJobCreation() {
+  void rejectsVersionOnePlanBeforeJobCreation() {
     ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
     var resource = OperatorTestFixtures.request("bad-scan");
     Map<String, Object> plan = mapper.convertValue(OperatorTestFixtures.localPlan(null), Map.class);
-    plan.put("handlers", java.util.List.of("default", "not-a-handler"));
-    resource.setAdditionalProperty("spec", Map.of("plan", plan));
+    plan.put("version", 1);
+    resource.setAdditionalProperty("spec", Map.of("plan", plan,
+        "scanner", Map.of("evidence", Map.of("claimName", "atlas-evidence"))));
 
     assertThrows(OperatorValidationException.class,
         () -> new ScanRequestSpecParser().parse(resource, "scanner:default"));
+  }
+
+  @Test
+  void rejectsPersistedPlanWithoutEvidenceVolume() {
+    ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
+    var resource = OperatorTestFixtures.request("missing-evidence-volume");
+    resource.setAdditionalProperty("spec", Map.of(
+        "plan", mapper.convertValue(OperatorTestFixtures.localPlan(null), Map.class)));
+
+    OperatorValidationException exception = assertThrows(OperatorValidationException.class,
+        () -> new ScanRequestSpecParser().parse(resource, "scanner:default"));
+
+    assertEquals(true, exception.getMessage().contains("scanner.evidence is required"));
+  }
+
+  @Test
+  void rejectsEvidencePathOutsideMountedRoot() {
+    ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
+    var resource = OperatorTestFixtures.request("evidence-path");
+    Map<String, Object> plan = mapper.convertValue(OperatorTestFixtures.localPlan(null), Map.class);
+    ((Map<String, Object>) plan.get("evidence")).put("outputPath", "/tmp/not-evidence");
+    resource.setAdditionalProperty("spec", Map.of(
+        "plan", plan,
+        "scanner", Map.of("evidence", Map.of("claimName", "atlas-evidence",
+            "mountPath", "/var/lib/atlas-evidence"))));
+
+    OperatorValidationException exception = assertThrows(OperatorValidationException.class,
+        () -> new ScanRequestSpecParser().parse(resource, "scanner:default"));
+
+    assertEquals(true, exception.getMessage().contains("under scanner.evidence.mountPath"));
+  }
+
+  @Test
+  void rejectsReadOnlyEvidenceVolumeForPersistedScan() {
+    ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
+    var resource = OperatorTestFixtures.request("readonly-evidence");
+    resource.setAdditionalProperty("spec", Map.of(
+        "plan", mapper.convertValue(OperatorTestFixtures.localPlan(null), Map.class),
+        "scanner", Map.of("evidence", Map.of("claimName", "atlas-evidence",
+            "mountPath", "/var/lib/atlas-evidence", "readOnly", true))));
+
+    OperatorValidationException exception = assertThrows(OperatorValidationException.class,
+        () -> new ScanRequestSpecParser().parse(resource, "scanner:default"));
+
+    assertEquals(true, exception.getMessage().contains("readOnly must be false"));
   }
 }

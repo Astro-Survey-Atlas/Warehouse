@@ -1,5 +1,14 @@
 {
-  "version": 1,
+  "version": 2,
+  "scanRunId": "live-oss-20260825",
+  "layer": {
+    "layerId": "live-oss-image",
+    "surveyId": "live-oss",
+    "releaseId": "public",
+    "productId": "image",
+    "modality": "image",
+    "coverageRole": "footprint"
+  },
   "source": {
     "connector": {
       "type": "oss",
@@ -19,13 +28,13 @@
     "includeSuffixes": [".fits", ".fit"],
     "excludePatterns": []
   },
-  "handlers": ["default", "fits", "coverage"],
-  "modality": "image",
+  "extraction": {"mode": "fits-wcs", "outputOrder": 8},
   "sink": {
     "connector": {
       "type": "elasticsearch",
       "endpoint": "http://127.0.0.1:19200",
       "credentialRef": {}
     }
-  }
+  },
+  "evidence": {"outputPath": "/var/lib/atlas-evidence/live-oss-20260825"}
 }
