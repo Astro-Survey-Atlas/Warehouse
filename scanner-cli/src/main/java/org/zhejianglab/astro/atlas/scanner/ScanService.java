@@ -76,6 +76,13 @@ public final class ScanService {
       EvidenceWriter.EvidenceResult evidence = memoryMode
           ? new EvidenceWriter.EvidenceResult(snapshotHash(allFiles), null)
           : evidenceWriter.write(Path.of(plan.evidence().outputPath()), plan.scanRunId(), plan.layer().layerId(), allFiles, allCoverages, errors);
+      // A scan with extraction errors and no spatial output is a failed refresh,
+      // not a successful empty layer. Evidence has already been written so the
+      // failure remains auditable before the runner exits non-zero.
+      if (!errors.isEmpty() && allCoverages.isEmpty()) {
+        String failure = errors.get(0);
+        throw new IllegalStateException("scan produced no coverage: " + failure);
+      }
       List<Integer> orders = allCoverages.stream().map(SpatialCoverage::healpixOrder).distinct().sorted().toList();
       CoverageLayer active = updating.active(evidence.snapshotSha256(), orders, allFiles.size(), allCoverages.size(), errors.size());
       writer.saveLayer(active);
@@ -84,10 +91,10 @@ public final class ScanService {
           errors.size(), orders, evidence.path(), Instant.now());
     } catch (RuntimeException exception) {
       String failure = message(exception);
-      errors.add(failure);
+      if (errors.isEmpty()) errors.add(failure);
       String snapshot = snapshotHash(allFiles);
       try {
-        writer.saveLayer(updating.failed(failure, snapshot, errors.size()));
+        writer.saveLayer(updating.failed(errors.get(0), snapshot, errors.size()));
       } catch (RuntimeException ignored) {
         // Preserve the original failure; the adapter may be unavailable too.
       }

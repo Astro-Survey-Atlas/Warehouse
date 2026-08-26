@@ -37,14 +37,19 @@ public final class CatalogHandler implements CoverageExtractor {
   }
 
   private void extractInto(ScanContext context) throws IOException {
-    if (context.item().fileType() != FileType.CSV && context.item().fileType() != FileType.TSV) return;
+    if (context.item().fileType() != FileType.CSV && context.item().fileType() != FileType.TSV
+        && context.item().fileType() != FileType.CATALOG) return;
+    boolean whitespaceCatalog = context.item().fileType() == FileType.CATALOG;
     char delimiter = context.item().fileType() == FileType.TSV ? '\t' : ',';
     CatalogSpec spec = context.plan().extraction().catalog();
     ExtractionMode mode = context.plan().extraction().mode();
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(context.content().open(), StandardCharsets.UTF_8))) {
       String headerLine = readRecord(reader, delimiter);
       if (headerLine == null) return;
-      List<String> headers = parse(headerLine, delimiter);
+      List<String> headers = whitespaceCatalog ? parseWhitespace(headerLine) : parse(headerLine, delimiter);
+      if (whitespaceCatalog && !headers.isEmpty() && "#".equals(headers.get(0))) {
+        headers = headers.subList(1, headers.size());
+      }
       Map<String, Integer> columns = columns(headers);
       boolean coordinateMode = mode == ExtractionMode.CATALOG_RADEC;
       boolean healpixMode = mode == ExtractionMode.CATALOG_HEALPIX;
@@ -66,9 +71,10 @@ public final class CatalogHandler implements CoverageExtractor {
       String line;
       while ((line = readRecord(reader, delimiter)) != null) {
         if (line.isBlank()) continue;
+        if (whitespaceCatalog && line.stripLeading().startsWith("#")) continue;
         context.addCatalogRow();
         try {
-          List<String> values = parse(line, delimiter);
+          List<String> values = whitespaceCatalog ? parseWhitespace(line) : parse(line, delimiter);
           if (raColumn != null && decColumn != null) {
             Double ra = parse(values, raColumn);
             Double dec = parse(values, decColumn);
@@ -191,6 +197,11 @@ public final class CatalogHandler implements CoverageExtractor {
     if (quoted) throw new IllegalArgumentException("unterminated quoted catalog field");
     values.add(value.toString().trim());
     return List.copyOf(values);
+  }
+
+  private static List<String> parseWhitespace(String line) {
+    String value = line == null ? "" : line.trim();
+    return value.isEmpty() ? List.of() : List.of(value.split("\\s+"));
   }
 
   private static String normalize(String value) {

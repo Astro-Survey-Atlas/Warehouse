@@ -1,6 +1,7 @@
 package org.zhejianglab.astro.atlas.scanner;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
@@ -116,13 +117,53 @@ class LocalScanTest {
     assertEquals(1, summary.coverageRecordCount());
   }
 
+  @Test
+  void parsesWhitespaceSeparatedCatCatalogsWithCommentedHeaders() throws Exception {
+    Path catalog = tempDir.resolve("csst.cat");
+    Files.writeString(catalog,
+        "# obj_ID ra dec class\n"
+            + "source-1 180.25 -2.5 star\n"
+            + "source-2 180.25 -2.5 galaxy\n",
+        StandardCharsets.UTF_8);
+    InMemoryIndex index = new InMemoryIndex();
+
+    ScanSummary summary = new ScanService(new LocalSourceAdapter(), index).scan(
+        catalogPlan(catalog, new CatalogSpec("ra", "dec", null, null, null), List.of(".cat")));
+
+    assertEquals(2, summary.catalogRowCount());
+    assertEquals(2, summary.validCatalogRowCount());
+    assertEquals(1, summary.coverageRecordCount());
+    assertEquals(org.zhejianglab.astro.atlas.core.FileType.CATALOG, index.files().get(0).fileType());
+  }
+
+  @Test
+  void marksAZeroCoverageScanWithExtractionErrorsAsFailed() throws Exception {
+    Path fits = tempDir.resolve("missing-spatial-header.fits");
+    String[] cards = {
+        card("SIMPLE  =                    T"),
+        card("NAXIS   =                    2"),
+        card("END")
+    };
+    Files.write(fits, String.join("", cards).getBytes(StandardCharsets.US_ASCII));
+    InMemoryIndex index = new InMemoryIndex();
+
+    assertThrows(IllegalStateException.class, () -> new ScanService(new LocalSourceAdapter(), index).scan(fitsPlan(fits)));
+    assertEquals(org.zhejianglab.astro.atlas.core.LayerState.FAILED, index.layers().get(0).state());
+    assertEquals(0, index.coverages().size());
+    assertEquals(1, index.layers().get(0).errorCount());
+  }
+
   private ScanPlan catalogPlan(Path root) {
-    return catalogPlan(root, new CatalogSpec("ra", "dec", null, null, null));
+    return catalogPlan(root, new CatalogSpec("ra", "dec", null, null, null), List.of(".csv"));
   }
 
   private ScanPlan catalogPlan(Path root, CatalogSpec catalog) {
+    return catalogPlan(root, catalog, List.of(".csv"));
+  }
+
+  private ScanPlan catalogPlan(Path root, CatalogSpec catalog, List<String> suffixes) {
     return plan(root, "catalog-layer", Modality.CATALOG, CoverageRole.OCCUPANCY,
-        ExtractionMode.CATALOG_RADEC, catalog, List.of(".csv"));
+        ExtractionMode.CATALOG_RADEC, catalog, suffixes);
   }
 
   private ScanPlan fitsPlan(Path root) {

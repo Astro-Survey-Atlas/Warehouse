@@ -54,7 +54,7 @@ public final class ScanRequestSpecParser {
     if (!errors.isEmpty()) throw new OperatorValidationException(errors);
     ScannerSpec scanner = new ScannerSpec(image, spec.scanner().serviceAccountName(),
         spec.scanner().backoffLimit(), spec.scanner().activeDeadlineSeconds(),
-        spec.scanner().ttlSecondsAfterFinished(), spec.scanner().resources());
+        spec.scanner().ttlSecondsAfterFinished(), spec.scanner().resources(), spec.scanner().evidence());
     return new ParsedScanRequest(new ScanRequestSpec(spec.plan(), scanner, spec.credentials()),
         resource.getMetadata().getName());
   }

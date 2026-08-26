@@ -48,8 +48,8 @@ multi-order reads, stable cursor, truncation, and shared FileAsset IDs.
 - [x] Add same-layer Job waiting and expose snapshot/evidence summary fields.
 - [x] Mount an explicit evidence PVC in scanner Jobs and reject paths outside
   its mount root.
-- [x] Rebuild only pre-release `ast_*` mappings; live k3s smoke rerun remains an
-  environment-dependent deployment step.
+- [x] Rebuild only pre-release `ast_*` mappings and rerun the live k3s smoke
+  against the v2 Operator/Scanner path.
 
 Gate: Operator tests and live smoke update only the three `ast_*` indices; all
 legacy `astro_*` resources remain unchanged, and persisted evidence has an
@@ -57,9 +57,18 @@ explicit PVC/object-store mount.
 
 ## Phase 5: Contract Probes And Assets Cutover
 
-- [ ] Probe HST image WCS, SDSS spectral FITS, Gaia catalog, and HI4PI cube
-  headers/catalog metadata, recording unsupported cases as evidence.
-- [ ] Verify Assets direct lookup of ACTIVE layers, files, modality, order,
+- [x] Probe HST image WCS, Gaia catalog, and HI4PI cube headers/catalog
+  metadata, recording unsupported cases as evidence. HST primary-HDU WCS is
+  explicitly unsupported today; Gaia and HI4PI completed with exact/estimated
+  order-8 output as documented in `docs/contract-probe-results-20260825.md`.
+- [x] Expand the real OSS probe beyond one Euclid FITS file: inventory the
+  `MER/` root metadata, enumerate the bounded `MER/102018212/` tile, and scan
+  bounded VIS, NISP, and DECAM products, including catalog-FITS unsupported
+  cases without adding a new extractor.
+- [x] Probe a local SDSS spectral FITS header and a DESI catalog with the v2
+  scanner in memory; both produced explicit order-8 coverage without reading
+  scientific arrays.
+- [x] Verify Assets direct lookup of ACTIVE layers, files, modality, order,
   precision, entrypoint fallback, and truncation against the configured
   deployment endpoint.
 - [x] Update handoff and cutover runbook; do not migrate historical results.

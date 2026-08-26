@@ -25,3 +25,8 @@ error, but never credentials or science-array values.
 The production gate is the same plan against the configured public endpoint.
 That deployment-backed run is intentionally separate from unit tests because
 the endpoint, mirror availability, and credentials are environment state.
+
+The completed 2026-08-25 run, including real Euclid OSS inventory counts,
+successful mode summaries, input hashes, and unsupported HST/FITS-catalog
+cases, is recorded in
+[`contract-probe-results-20260825.md`](contract-probe-results-20260825.md).

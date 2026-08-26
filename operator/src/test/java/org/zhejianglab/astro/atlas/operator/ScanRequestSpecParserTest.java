@@ -24,6 +24,7 @@ class ScanRequestSpecParserTest {
 
     assertEquals("catalog-scan", parsed.name());
     assertEquals("scanner:default", parsed.spec().scanner().image());
+    assertEquals("atlas-evidence", parsed.spec().scanner().evidence().claimName());
     assertEquals("/survey", parsed.spec().plan().source().location().rootPath());
   }
 

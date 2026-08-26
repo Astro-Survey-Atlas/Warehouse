@@ -1,122 +1,238 @@
-# Project Handoff
+# Warehouse Session Handoff
 
-## Starting Point
+Updated: 2026-08-26
 
-The previous repository was intentionally frozen because it has running workloads. This sibling repository is the clean implementation target:
+Repository: `/home/aaron/Repo/Astro-Survey-Atlas-Warehouse`
 
-```text
-/home/aaron/Repo/Astro-Survey-Atlas-Warehouse
-```
+Starting commit: `3f7df52`
 
-The legacy/reference repository is:
+## Start Here
 
-```text
-/home/aaron/Repo/data-warehouse
-```
+Read `AGENTS.md`, `CONTEXT.md`, `docs/requirements.md`,
+`docs/project-boundary.md`, `docs/architecture.md`, and the contract relevant
+to the code being changed. The Assets integration handoff is
+`/home/aaron/Repo/Astro-Survey-Atlas-Assets/HANDOFF.md`.
 
-The legacy repository currently contains user-staged changes. They are unrelated to this project and must remain untouched.
-
-## Product Decision
-
-Build an astronomy-specific file discovery and spatial indexing system, not a general data processing platform. The useful product loop is:
+This repository has substantial uncommitted implementation, documentation,
+probe, and deployment work. At this checkpoint `git status --short` is:
 
 ```text
-source Connector + location
-  -> file enumeration
-  -> FITS header/WCS or catalog spatial extraction
-  -> FileAsset and SpatialCoverage records
-  -> Elasticsearch upsert
-  -> point, cone, or HEALPix query
-  -> candidate files and modalities
+ M HANDOFF.md
+ M deploy/kubernetes/evidence-pvc-minio-smoke.yaml
+ M deploy/kubernetes/operator-deployment.yaml
+ M docs/contract-probes.md
+ M docs/implementation-plan.md
+ M index-elasticsearch/src/main/java/org/zhejianglab/astro/atlas/es/ElasticsearchAdapter.java
+ M operator/src/main/java/org/zhejianglab/astro/atlas/operator/ScanRequestSpecParser.java
+ M operator/src/test/java/org/zhejianglab/astro/atlas/operator/ScanRequestSpecParserTest.java
+ M scanner-cli/src/main/java/org/zhejianglab/astro/atlas/scanner/CatalogHandler.java
+ M scanner-cli/src/main/java/org/zhejianglab/astro/atlas/scanner/ScanService.java
+ M scanner-cli/src/test/java/org/zhejianglab/astro/atlas/scanner/LocalScanTest.java
+ M spatial-core/src/main/java/org/zhejianglab/astro/atlas/core/FileType.java
+?? deploy/kubernetes/scanrequest-csst-oss-catalog.yaml
+?? deploy/kubernetes/scanrequest-csst-oss-demo.yaml
+?? deploy/kubernetes/scanrequest-desi-catalog.yaml
+?? deploy/kubernetes/scanrequest-desi-overlap.yaml
+?? docs/contract-probe-results-20260825.md
 ```
 
-The MVP handles FITS, CSV/TSV catalogs, and header-only treatment of spectral files. It does not read spectral arrays, wavelength samples, or flux values. Spectroscopy auto-detection is intentionally deferred.
+These files are the current implementation, not disposable generated output.
+Review and preserve them. The sibling `/home/aaron/Repo/data-warehouse` is a
+frozen legacy/reference repository and must remain untouched.
 
-## Important Decisions
+## Fixed Product Decisions
 
-- The project is astronomy-specific and does not become a generic workflow or ETL platform.
-- Spatial normalization is ICRS, NESTED HEALPix with the actual source/output
-  order preserved per SpatialCoverage. Computed FITS/RA-Dec extraction is
-  bounded to order 0..12; catalog-healpix preserves its declared source order.
-- New indices are `ast_layer_index_v1`, `ast_file_index_v1`, and
-  `ast_coverage_index_v1`; they are isolated from the legacy `astro_*` indices.
-- File IDs are stable hashes of canonical source URIs; rescans upsert the same FileAsset.
-- Coverage queries require explicit layer IDs and one explicit order/cell set.
-  They return candidates and preserve precision (`exact`, `estimated`, or
-  `entrypoint-only`); no exact geometry refinement is required for MVP.
-- A scan has one source and one sink. The first plan JSON expresses source location and sink configuration directly; no CRD is required for the scanner itself.
-- Connector represents how to connect. A plan supplies the concrete bucket, prefix, path, or output location.
-- Extraction modes are compiled into the scanner and selected as one typed mode.
-  The scanner owns internal stage order; there is no public handler list, DAG,
-  plugin system, or intermediate workflow.
-- CSV/TSV produces one FileAsset and deduplicated coverage cells per file. It does not write one Elasticsearch object document per catalog row.
-- A spectral file is still discovered and indexed as a FileAsset; MVP may derive spatial metadata from FITS headers without reading spectral arrays.
-- A refresh replaces coverage for its layer; no queryable scan-result history or
-  tombstone index is retained. Shared FileAsset documents remain reusable by
-  other current layers.
-- Query API is read-only and has no built-in user identity model. Access control belongs to the surrounding Ingress/API Gateway.
-- Operator remains in scope as a thin Kubernetes adapter. It will create scanner Jobs and report status; it will not calculate HEALPix, parse FITS, or write Elasticsearch from reconcile callbacks.
+- Warehouse is an astronomy-specific discovery and spatial indexing service,
+  not a general workflow engine, reduction pipeline, download proxy, or
+  universal catalog.
+- The current domain is CoverageLayer, FileAsset, SpatialCoverage,
+  ExtractionMode, SourceSnapshot, and ScanRequest. FileAsset is implemented;
+  SourceUnit remains reserved until data justifies it.
+- A source refresh replaces current layer state through `UPDATING`, `ACTIVE`,
+  or `FAILED`. Only ACTIVE is queryable. There is no user-queryable scan history.
+- Indices are `ast_layer_index_v1`, `ast_file_index_v1`, and
+  `ast_coverage_index_v1`. Their suffix versions mappings/contracts, not runs.
+  Isolation from the old `astro_*` indices is intentional.
+- FileAsset IDs are stable hashes of canonical source URIs. Shared FileAssets
+  may remain while a layer's coverage edges are replaced.
+- SpatialCoverage uses ICRS and explicit NESTED HEALPix `order/ipix`, retaining
+  `exact`, `estimated`, or `entrypoint-only` precision.
+- V1 extraction modes are `fits-wcs`, `fits-header-position`, `catalog-radec`,
+  and `catalog-healpix`. One typed mode is declared per plan; extractor order is
+  compiled inside Warehouse rather than supplied as a Handler pipeline.
+- CSV/TSV catalogs create one FileAsset per file and deduplicated coverage
+  cells, not one Elasticsearch document per catalog row.
+- The thin Operator validates ScanPlan v2, creates scanner Jobs, and reports
+  status. Spatial extraction and Elasticsearch writes stay in the scanner.
+- Credentials are references only. Evidence retains inventory hashes and
+  extraction errors outside browser startup payloads.
 
-## Current Implementation State
+## Current Implementation
 
-The v2 hardening pass is implemented. FITS headers with linear TAN WCS and
-image dimensions produce sampled explicit-order footprint cells without
-reading scientific arrays; files without complete geometry can use the
-explicit header-position mode, while malformed spatial cards become item
-errors. CSV/TSV extraction accepts quoted fields, explicit catalog columns,
-HEALPix order columns, and reports valid/invalid row counts. Scan writes are
-accumulated into bounded batches, refresh one layer through an expiring lease,
-and write source-inventory/error/normalized evidence before marking the layer
-ACTIVE or FAILED. The Elasticsearch adapter owns strict mappings for all three
-`ast_*` indices, layer-scoped deletion, conditional lease acquisition, exact
-order lookup, bounded retries, and credential-free failure reporting.
+The multi-module Java implementation contains spatial contracts, scanner CLI,
+local and S3-compatible connectors, strict Elasticsearch mappings and query
+adapter, HTTP query API, and a Fabric8 Kubernetes Operator. ScanPlan v2 supports
+local directory/single-file sources and S3/OSS bucket-prefix sources. Evidence
+includes inventory, errors, and a normalized scan document.
 
-`index-elasticsearch` now publishes strict mapping templates, exposes install/verify/recreate operations, and provides `IndexAdminMain` for explicit bootstrap. The templates are deployment-owned and scanner startup never recreates indices. The stable mapping decision is recorded in `docs/adr/0006-explicit-elasticsearch-mappings.md`; external Elasticsearch by default is recorded in ADR-0007. QueryService now fetches additional coverage pages when duplicate coverage cells would otherwise underfill the requested unique FileAsset limit.
+FITS support reads headers rather than scientific arrays. Linear TAN image WCS
+is sampled into estimated cells; explicit header coordinates produce an
+entrypoint-only cell. CSV/TSV supports configured RA/Dec or NESTED HEALPix
+columns. HST WCS in a later `SCI` HDU and FITS binary-table catalogs are
+currently unsupported and must fail visibly rather than invent coverage.
 
-The `operator` Maven module is now implemented with Fabric8 Kubernetes Client. It watches namespaced `ScanRequest` resources at `atlas.zhejianglab.org/v1alpha1`, validates the canonical ScanPlan through `spatial-core`, renders a secret-free immutable plan ConfigMap, creates a plan/execution-hash-named scanner Job, projects Secret references without Secret read permission, and maps Job plus scanner summary state into CR status. Container runner jars and Kubernetes manifests are checked in under `scanner-cli`, `operator`, and `deploy/kubernetes`.
+The implementation is a functioning vertical slice, but it is not yet safe for
+large authoritative refreshes because of the correctness and streaming gaps
+listed below.
 
-## Verification State
+## Live Deployment Layout
 
-The local FITS/CSV vertical slice and the first live remote verification are
-complete. JDK 17/Maven are installed locally. The S3-compatible source adapter
-and Elasticsearch HTTP adapter are wired into scanner/query, and fake HTTP
-tests cover three-index writes, layer leases, layer deletion, exact multi-order
-coverage search, cursor fingerprints, FileAsset lookup, explicit mappings,
-bulk boundaries, item retries, and permanent failures.
+The current cluster runs the Warehouse infrastructure as Helm release
+`warehouse` in namespace `warehouse`, chart `metadata-environment-0.0.32`
+(application version `1.11.0`). That release provides the Elasticsearch,
+Kafka, MinIO, Flink session cluster, and metadata-ingest components. The
+Elasticsearch Service is:
 
-Live verification on 2026-08-25 used the supplied OSS endpoint and bucket/prefix through a port-forward to the disposable `warehouse` Elasticsearch Service. The two product indices were explicitly recreated, strict templates installed, and both mappings verified green before scanning. The scanner discovered and processed 6 FITS files and emitted 48 sampled order-8 WCS footprint records with zero item errors. A second scan produced the same counts (`ast_file_index_v1=6`, `ast_coverage_index_v1=48`), confirming stable-ID upsert behavior. Point, cone, and order-8 HEALPix queries returned candidates and matching coverage; point `limit=2` cursor pagination returned two pages of two unique files without duplicates; readiness returned 200; invalid coordinates returned 400 and POST returned 405. No live credentials were written to the repository, plan JSON, logs, or responses.
+```text
+http://warehouse-elasticsearch.warehouse.svc.cluster.local:9200
+```
 
-A local single-file catalog path is also supported. The file `/mnt/data/catalogs/cosmos-parameter-prediction/web_predictions_COSMOS_prediction_dataset.csv` was scanned in memory: 298,232 rows, valid `ra`/`dec` coordinates, one FileAsset, one exact-order coverage set, and no scientific arrays read. The scanner accepts either a local directory or a single local file path; `--memory` avoids Elasticsearch for this diagnostic. The live remote verification predates the v2 current-layer migration and should be rerun after deployment templates are installed; the current shell has no live endpoint or credential references set.
+The new Warehouse scanner/operator code is deployed separately. The Operator
+runs as Deployment `astro-atlas-operator` in namespace `atlas-system`, using
+the image `astro-atlas-operator:0.2.0-20260825-fix2`. It watches namespaced
+`ScanRequest` resources, creates immutable plan ConfigMaps and one scanner Job
+per rendered plan, and injects the scanner image
+`astro-atlas-scanner:0.2.0-20260825-fix3`. Scanner Jobs run in the ScanRequest
+namespace, read OSS/S3/MinIO through Secret references, write the three
+`ast_*` indices, and persist inventory/normalized/error evidence to the
+namespace-local `atlas-evidence-smoke` PVC.
 
-The previous Operator smoke run used the legacy embedded plan shape and is only
-kept as a baseline. The Operator code and checked-in examples now validate
-ScanPlan v2, label Jobs by layer, wait for another non-terminal layer Job, and
-surface run/snapshot/order/evidence fields. Persisted plans now require an
-explicit `scanner.evidence` PVC; the Job mounts it at the evidence root and
-rejects output paths outside that root. A v2 k3s smoke rerun is still a
-deployment step because it requires the configured cluster, image, a PVC in
-the ScanRequest namespace, and the new `ast_*` endpoint.
+The checked-in installation sequence is: build Maven jars, build and push the
+scanner/operator images, apply `namespace.yaml`, `crd.yaml`, `rbac.yaml`, and
+`operator-deployment.yaml`, create an evidence PVC and credential Secrets, then
+apply a `ScanRequest` manifest. See `deploy/kubernetes/README.md`; the
+CSST/DESI examples under `deploy/kubernetes/scanrequest-*.yaml` are bounded
+smoke workloads, not full-survey scans.
 
-The remaining implementation work is deployment-backed contract probing (HST,
-SDSS, Gaia, and HI4PI metadata) and an Assets direct-read smoke against the
-configured Warehouse endpoint. External Elasticsearch remains the default to
-avoid consuming another resident cluster; the optional bundled subchart should
-wait until dedicated resources are released.
+## Verification Baseline
 
-The current local gate is green: `mvn test` and `mvn package` pass, `git diff
---check` is clean, and the checked-in CRD, ScanRequest, and evidence PVC
-manifests parse with `kubectl create --dry-run=client`. The four real-data
-probes and live v2 smoke remain environment-dependent and were not claimed as
-completed here.
+The last local gate was green:
 
-## Completion Gate For This Handoff
+```text
+mvn test                         # 53 tests passed
+mvn package -DskipTests          # passed
+kubectl create --dry-run=client  # checked manifests parsed
+git diff --check                 # clean at the reviewed checkpoint
+```
 
-Before the next deployment or contract-probe session, the next agent should be
-able to answer all of these from the checked-in documents:
+Recorded probes on 2026-08-25:
 
-- What is a FileAsset and how is its ID made stable?
-- What is a SpatialCoverage record and how does a query map to an explicit order/cell set?
-- Which file formats are read, and what is deliberately not read?
-- Where do source locations and credentials come from?
-- Which modules own spatial math, scanning, querying, and Kubernetes orchestration?
-- Which existing repository is frozen and must not be edited?
+- A v2 OSS ScanRequest read one Euclid VIS FITS file, produced 11 estimated
+  order-8 cells, and reported zero errors.
+- A bounded Euclid tile inventory found 44 FITS objects (50.976 GiB). Four
+  exact-key VIS/NISP/DECAM image probes each produced 11 estimated order-8 cells.
+- The Euclid `MER/` root inventory listed 15,948 FITS objects across 352 tile
+  prefixes, about 19 TiB total. It was inventoried only, never bulk-downloaded.
+- Gaia DR3 CSV produced 12 exact order-8 cells from 128 valid rows. An explicit
+  HEALPix catalog preserved three source order-8 cells.
+- SDSS spectral FITS produced one entrypoint-only order-8 cell. HI4PI's 3D cube
+  produced 7,494 estimated spatial cells while ignoring the spectral axis.
+- HST multi-HDU WCS and two Euclid FITS binary-table catalogs produced explicit
+  unsupported/error results with no fabricated coverage.
+- Assets read ACTIVE CSST, DESI, and Euclid layers from the `ast_*` indices and
+  completed catalog, overlap, and file reverse-lookup requests.
+
+The live `ast_*` counts on 2026-08-26 are 5 layer documents, 5 FileAssets, and
+2,060 coverage edges. ACTIVE edges are split across CSST catalog (5), DESI
+merger catalog (2,039), DESI overlap catalog (5), and Euclid VIS (11). The
+five indexed files total 1,652,927,417 bytes (about 1.54 GiB); successful
+catalog probes contain 26,134 valid rows. The current CSST image layer is
+`FAILED` with one missing-spatial-header error, so it contributes no queryable
+coverage. The Euclid `MER/` root remains inventory-only: 15,948 FITS objects,
+about 19 TiB, were listed but not bulk-scanned. The local Gaia, HI4PI, SDSS,
+and HST probes were not persisted into these indices.
+
+Assets is deployed separately as Helm release `astro-survey-atlas-assets` in
+namespace `astro-survey-atlas-assets`. It points at the Warehouse Service with
+`ASSETS_WAREHOUSE_ES_URL` and reads only the three `ast_*` indices. Its current
+runtime behavior replaces the static public footprint set whenever ACTIVE
+Warehouse layers exist. This is an Assets integration bug: the public bundle
+still contains 44 footprints across 14 surveys, but the deployed coverage
+endpoint showed only 4 Warehouse footprints across `csst`, `desi`, and
+`euclid`. Warehouse data is present; the next Assets session must merge static
+public records with Warehouse overrides instead of treating Warehouse as the
+complete catalog.
+
+Exact probe inputs, hashes, counts, and reproduction details are in
+`docs/contract-probe-results-20260825.md`. Live counts and cluster objects are
+time-sensitive observations, not acceptance criteria.
+
+## Known Contract Deviations
+
+1. **Partial scans can become ACTIVE.** `ScanService.java` fails only when
+   errors exist and all coverage is empty. The contract requires any item or
+   write error to mark the refresh FAILED; a successful empty scan alone may be
+   ACTIVE.
+2. **FITS WCS is labeled ICRS without proving it.** `FitsHeaderHandler.java`
+   validates TAN shape but not celestial axes/reference frame before emitting
+   ICRS coverage.
+3. **Missing catalog spatial columns can look like a valid empty scan.**
+   `CatalogHandler.java` can return zero coverage and zero errors when the
+   configured RA/Dec or HEALPix columns are absent.
+4. **Failure evidence is incomplete.** Evidence is written after enumeration,
+   coverage deletion, extraction, and Elasticsearch writes. Failures before
+   that point can leave no inventory, normalized scan, or error evidence.
+5. **Lease ownership is weak.** The lease is fixed to one hour with no renewal,
+   and `ElasticsearchAdapter.java` lets the same `scanRunId` bypass an existing
+   UPDATING lease. A long or duplicated Job can overlap writes.
+6. **The scanner is not actually bounded in memory.** It retains every
+   FileAsset and SpatialCoverage and serializes one full normalized JSON even
+   though Elasticsearch writes are batched. This blocks safe large scans.
+7. **Operator success can omit scanner truth.** `ScanRequestOperator.java`
+   swallows summary/log retrieval failures, so a completed Job can be reported
+   SUCCEEDED without a valid scanner summary.
+8. **OSS FITS reads are full-object GETs.** `S3SourceAdapter.java` does not use
+   byte Range requests, making header-only extraction unnecessarily expensive.
+9. **Operator Jobs lose caller tracking labels.** Generated Jobs preserve
+   internal identity labels but not the allowed labels needed for operational
+   correlation.
+10. **ADR-0004 is stale.** It still describes retained indexed scan history and
+    must be marked superseded by the current-state decision to avoid reviving
+    the old model.
+
+## Next Session
+
+Use this order; each step should add regression coverage before deployment:
+
+1. Make every partial/error refresh FAILED while preserving a genuinely empty,
+   error-free scan as ACTIVE. Verify ACTIVE-only queries hide failed partial
+   edges.
+2. Make evidence failure-safe from enumeration onward. A failed run must leave
+   a source snapshot when available, phase, errors, counts, and provenance.
+3. Validate FITS celestial axes/frame as ICRS and fail missing catalog columns
+   explicitly. Re-run HST, Gaia, HI4PI, and Euclid contract probes.
+4. Add unique lease ownership and renewal/heartbeat behavior; test expiration,
+   duplicate run IDs, and long scans.
+5. Stream enumeration, extraction, Elasticsearch writes, and evidence so peak
+   memory is bounded independently of source size.
+6. Add S3/OSS byte Range reads for FITS headers, with a controlled fallback for
+   servers that do not honor ranges.
+7. Require a parseable scanner summary before Operator success and propagate
+   allowed tracking labels to Jobs.
+8. Mark ADR-0004 superseded, rerun all 53+ tests and manifest validation, then
+   perform bounded CSST/DESI/Euclid scans and the Assets direct-read smoke.
+9. After Warehouse correctness is green, fix Assets startup-only refresh and
+   its 10,000-coverage-document load limit.
+
+## Do Not Disturb
+
+- Keep `/home/aaron/Repo/data-warehouse` frozen and keep `astro_*` out of the
+  new runtime path.
+- Preserve all dirty files above unless their behavior is deliberately replaced
+  with tests and updated contracts.
+- Keep secrets in Kubernetes Secret or environment references. Never place
+  access keys in plans, evidence, logs, fixtures, or commits.
+- Do not scan the 19 TiB Euclid root as a content test. Use listing-only
+  inventory, a bounded tile prefix, or exact object keys.
+- Treat FITS multi-HDU WCS and FITS binary-table catalog support as separate
+  feature decisions after the current contract deviations are closed.

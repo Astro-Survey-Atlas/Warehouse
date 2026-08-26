@@ -6,6 +6,7 @@ public enum FileType {
   FITS,
   CSV,
   TSV,
+  CATALOG,
   UNKNOWN;
 
   public static FileType fromFileName(String fileName) {
@@ -13,6 +14,7 @@ public enum FileType {
     if (value.endsWith(".fits") || value.endsWith(".fit")) return FITS;
     if (value.endsWith(".csv")) return CSV;
     if (value.endsWith(".tsv")) return TSV;
+    if (value.endsWith(".cat")) return CATALOG;
     return UNKNOWN;
   }
 }

@@ -85,7 +85,9 @@ public final class ElasticsearchAdapter implements IndexWriter, IndexReader, Aut
 
   @Override
   public void deleteCoverageForLayer(String layerId) {
-    send("POST", "/" + IndexContract.COVERAGE_INDEX + "/_delete_by_query?refresh=wait_for",
+    // Elasticsearch accepts only a boolean refresh parameter for _delete_by_query
+    // (unlike the bulk API, which also supports wait_for).
+    send("POST", "/" + IndexContract.COVERAGE_INDEX + "/_delete_by_query?refresh=true",
         Map.of("query", Map.of("term", Map.of("layer_id", layerId))));
   }
 

@@ -1,0 +1,64 @@
+apiVersion: atlas.zhejianglab.org/v1alpha1
+kind: ScanRequest
+metadata:
+  name: desi-overlap-demo
+  namespace: warehouse
+spec:
+  scanner:
+    image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.2.0-20260825-fix3
+    backoffLimit: 0
+    activeDeadlineSeconds: 1800
+    ttlSecondsAfterFinished: 86400
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+    evidence:
+      claimName: atlas-evidence-smoke
+      mountPath: /var/lib/atlas-evidence
+  credentials:
+    source:
+      secretName: atlas-minio-desi-credentials
+      accessKeyKey: accessKey
+      secretKeyKey: secretKey
+  plan:
+    version: 2
+    scanRunId: desi-overlap-demo-20260825
+    layer:
+      layerId: desi-overlap-catalog
+      surveyId: desi
+      releaseId: desi-public-catalog-demo
+      productId: desi-overlap-catalog
+      modality: catalog
+      coverageRole: occupancy
+      entrypoint: s3://astro-artifacts/demo/desi/gz_desi_overlap.csv
+    source:
+      connector:
+        type: s3
+        endpoint: http://warehouse-minio.warehouse.svc.cluster.local:9000
+        region: us-east-1
+        credentialRef:
+          accessKeyEnv: ATLAS_SOURCE_ACCESS_KEY
+          secretKeyEnv: ATLAS_SOURCE_SECRET_KEY
+      location:
+        bucket: astro-artifacts
+        prefix: demo/desi/gz_desi_overlap.csv
+    filters:
+      includeSuffixes:
+        - .csv
+    extraction:
+      mode: catalog-radec
+      outputOrder: 8
+      catalog:
+        raColumn: ra
+        decColumn: dec
+    sink:
+      connector:
+        type: elasticsearch
+        endpoint: http://warehouse-elasticsearch.warehouse.svc.cluster.local:9200
+        credentialRef: {}
+    evidence:
+      outputPath: /var/lib/atlas-evidence/desi-overlap-demo-20260825
