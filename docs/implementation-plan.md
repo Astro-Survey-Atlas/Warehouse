@@ -50,6 +50,9 @@ multi-order reads, stable cursor, truncation, and shared FileAsset IDs.
   its mount root.
 - [x] Rebuild only pre-release `ast_*` mappings and rerun the live k3s smoke
   against the v2 Operator/Scanner path.
+- [x] Add a self-managed `atlas-warehouse` Helm release for Elasticsearch,
+  MinIO, Kafka, and strict `ast_*` mapping bootstrap; keep legacy `warehouse`
+  outside the runtime path.
 
 Gate: Operator tests and live smoke update only the three `ast_*` indices; all
 legacy `astro_*` resources remain unchanged, and persisted evidence has an
@@ -74,4 +77,4 @@ explicit PVC/object-store mount.
 - [x] Update handoff and cutover runbook; do not migrate historical results.
 
 Gate: `mvn test`, `mvn package`, template verification, and targeted smoke tests
-all pass from a clean checkout plus configured external services.
+all pass from a clean checkout plus the self-managed `atlas-warehouse` services.

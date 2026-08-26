@@ -25,13 +25,13 @@ spec:
           emptyDir: {}
       containers:
         - name: operator
-          image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-operator:0.2.0-20260825-fix2
+          image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-operator:0.2.0-20260826-operatorfix3
           imagePullPolicy: IfNotPresent
           env:
             - name: WATCH_NAMESPACE
               value: atlas-warehouse
             - name: SCANNER_IMAGE
-              value: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.2.0-20260825-fix3
+              value: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.2.0-20260826-shutdownfix1
             - name: RECONCILE_INTERVAL_SECONDS
               value: "10"
           securityContext:

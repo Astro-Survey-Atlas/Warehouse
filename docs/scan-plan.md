@@ -67,3 +67,14 @@ back to a center point.
 The scanner reports phase, scanRunId, layerId, source snapshot SHA-256,
 discovered/processed/file/coverage counts, available orders, catalog row counts,
 error count, evidence path, and completion time. It never reports secrets.
+
+## Cluster Defaults
+
+The checked-in Kubernetes examples run in `atlas-warehouse` and target the
+self-managed Elasticsearch Service at
+`http://atlas-warehouse-elasticsearch.atlas-warehouse.svc.cluster.local:9200`.
+S3-compatible plans may target the chart-owned MinIO Service at
+`http://atlas-warehouse-minio.atlas-warehouse.svc.cluster.local:9000`. These
+are deployment values, not alternate source or index semantics; callers may
+provide another endpoint explicitly, but the legacy `warehouse` endpoints are
+not valid defaults.

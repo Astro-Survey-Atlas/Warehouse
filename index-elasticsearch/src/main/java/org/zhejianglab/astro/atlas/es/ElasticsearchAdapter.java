@@ -40,10 +40,10 @@ import org.zhejianglab.astro.atlas.core.SpatialCoverage;
 
 /** HTTP adapter for current-state layer/file/coverage indices. */
 public final class ElasticsearchAdapter implements IndexWriter, IndexReader, AutoCloseable {
-  public static final int BULK_MAX_RECORDS = 500;
+  public static final int BULK_MAX_RECORDS = 100;
   public static final long BULK_MAX_BYTES = 1_500_000L;
   private static final int MAX_RETRIES = 3;
-  private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
+  private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(90);
   private final URI endpoint;
   private final HttpClient client;
   private final ObjectMapper mapper;

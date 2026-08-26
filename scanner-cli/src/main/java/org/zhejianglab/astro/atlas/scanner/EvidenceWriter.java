@@ -16,8 +16,10 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.zip.GZIPOutputStream;
 import org.zhejianglab.astro.atlas.core.FileAsset;
 import org.zhejianglab.astro.atlas.core.SpatialCoverage;
@@ -38,6 +40,7 @@ final class EvidenceWriter {
     private final Path filesPath;
     private final Path coveragePath;
     private final MessageDigest snapshotDigest = digest();
+    private final Set<Integer> orders = new LinkedHashSet<>();
     private BufferedWriter inventory;
     private BufferedWriter compressedInventory;
     private BufferedWriter errors;
@@ -55,6 +58,7 @@ final class EvidenceWriter {
     private int catalogRows;
     private int validCatalogRows;
     private int invalidCatalogRows;
+    private Thread shutdownHook;
 
     private Session(Path root, String scanRunId, String layerId) {
       this.root = root;
@@ -74,18 +78,20 @@ final class EvidenceWriter {
         compressedInventory.write('[');
         errors.write('[');
         writeSummary();
+        shutdownHook = new Thread(this::close, "atlas-scan-evidence-shutdown");
+        Runtime.getRuntime().addShutdownHook(shutdownHook);
       } catch (IOException exception) {
         closeQuietly();
         throw new IllegalStateException("failed to initialize scan evidence", exception);
       }
     }
 
-    void phase(String value) {
+    synchronized void phase(String value) {
       phase = value;
       writeSummary();
     }
 
-    void record(FileAsset file, List<SpatialCoverage> coverage) {
+    synchronized void record(FileAsset file, List<SpatialCoverage> coverage) {
       ensureOpen();
       try {
         Map<String, Object> inventoryRecord = new LinkedHashMap<>();
@@ -105,6 +111,7 @@ final class EvidenceWriter {
           for (SpatialCoverage item : coverage) {
             coverages.write(mapper.writeValueAsString(item.toDocument()));
             coverages.newLine();
+            orders.add(item.healpixOrder());
           }
         }
         fileCount++;
@@ -115,7 +122,7 @@ final class EvidenceWriter {
       }
     }
 
-    void error(String message) {
+    synchronized void error(String message) {
       ensureOpen();
       String value = message == null || message.isBlank() ? "unknown scan error" : message;
       if (firstError == null) firstError = value;
@@ -131,7 +138,8 @@ final class EvidenceWriter {
       }
     }
 
-    EvidenceResult complete(List<Integer> orders, int catalogRows, int validCatalogRows, int invalidCatalogRows) {
+    synchronized EvidenceResult complete(List<Integer> orders, int catalogRows, int validCatalogRows, int invalidCatalogRows) {
+      if ("COMPLETED".equals(phase) || "FAILED".equals(phase)) return terminalResult();
       setCatalogCounts(catalogRows, validCatalogRows, invalidCatalogRows);
       phase = "COMPLETED";
       RuntimeException failure = null;
@@ -139,29 +147,32 @@ final class EvidenceWriter {
       if (snapshotSha256 == null) snapshotSha256 = snapshotSha256();
       try { writeNormalized(orders); } catch (RuntimeException exception) { failure = combine(failure, exception); }
       try { writeSummary(); } catch (RuntimeException exception) { failure = combine(failure, exception); }
+      removeShutdownHook();
       if (failure != null) throw failure;
       return new EvidenceResult(snapshotSha256, root.toString());
     }
 
-    EvidenceResult fail(String failure, List<Integer> orders, int catalogRows, int validCatalogRows, int invalidCatalogRows) {
+    synchronized EvidenceResult fail(String failure, List<Integer> orders, int catalogRows, int validCatalogRows, int invalidCatalogRows) {
+      if ("COMPLETED".equals(phase) || "FAILED".equals(phase)) return terminalResult();
       setCatalogCounts(catalogRows, validCatalogRows, invalidCatalogRows);
       RuntimeException problem = null;
       try { recordFailure(failure); } catch (RuntimeException exception) { problem = exception; }
       phase = "FAILED";
       try { closeStreams(); } catch (RuntimeException exception) { problem = combine(problem, exception); }
       if (snapshotSha256 == null) snapshotSha256 = snapshotSha256();
-      try { writeNormalized(orders); } catch (RuntimeException exception) { problem = combine(problem, exception); }
+      try { writeNormalized(orders == null ? orderedOrders() : orders); } catch (RuntimeException exception) { problem = combine(problem, exception); }
       try { writeSummary(); } catch (RuntimeException exception) { problem = combine(problem, exception); }
+      removeShutdownHook();
       if (problem != null) throw problem;
       return new EvidenceResult(snapshotSha256, root.toString());
     }
 
-    long fileCount() { return fileCount; }
-    long coverageCount() { return coverageCount; }
-    long errorCount() { return errorCount; }
-    String firstError() { return firstError; }
+    synchronized long fileCount() { return fileCount; }
+    synchronized long coverageCount() { return coverageCount; }
+    synchronized long errorCount() { return errorCount; }
+    synchronized String firstError() { return firstError; }
 
-    String snapshotSha256() {
+    synchronized String snapshotSha256() {
       if (snapshotSha256 != null) return snapshotSha256;
       try {
         MessageDigest copy = (MessageDigest) snapshotDigest.clone();
@@ -172,9 +183,16 @@ final class EvidenceWriter {
     }
 
     @Override
-    public void close() {
-      if (!streamsClosed) {
-        try { closeStreams(); } catch (RuntimeException ignored) {}
+    public synchronized void close() {
+      if ("COMPLETED".equals(phase) || "FAILED".equals(phase)) {
+        removeShutdownHook();
+        return;
+      }
+      try {
+        fail("scanner process terminated before scan completed", orderedOrders(), catalogRows, validCatalogRows,
+            invalidCatalogRows);
+      } catch (RuntimeException ignored) {
+        // Shutdown cleanup is best effort; the raw evidence files remain for diagnosis.
       }
     }
 
@@ -292,6 +310,25 @@ final class EvidenceWriter {
       catalogRows = rows;
       validCatalogRows = valid;
       invalidCatalogRows = invalid;
+    }
+
+    private List<Integer> orderedOrders() {
+      return orders.stream().sorted().toList();
+    }
+
+    private EvidenceResult terminalResult() {
+      if (snapshotSha256 == null) snapshotSha256 = snapshotSha256();
+      return new EvidenceResult(snapshotSha256, root.toString());
+    }
+
+    private void removeShutdownHook() {
+      if (shutdownHook == null) return;
+      try {
+        Runtime.getRuntime().removeShutdownHook(shutdownHook);
+      } catch (IllegalArgumentException | IllegalStateException ignored) {
+        // Shutdown is already in progress or the hook has already been removed.
+      }
+      shutdownHook = null;
     }
 
     private void recordFailure(String failure) {

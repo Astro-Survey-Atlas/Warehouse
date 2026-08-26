@@ -8,10 +8,13 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import org.zhejianglab.astro.atlas.core.CoverageLayer;
 import org.zhejianglab.astro.atlas.core.FileAsset;
@@ -58,31 +61,34 @@ public final class ScanService {
 
   public ScanSummary scan(ScanPlan plan, boolean memoryMode) {
     ScanPlanValidator.validate(plan, memoryMode);
+    EvidenceWriter.Session evidence = memoryMode ? null
+        : evidenceWriter.start(Path.of(plan.evidence().outputPath()), plan.scanRunId(), plan.layer().layerId());
+    SnapshotHash memorySnapshot = new SnapshotHash();
+    ErrorAccumulator errors = new ErrorAccumulator();
+    ScanProgress progress = new ScanProgress();
     CoverageLayer updating = CoverageLayer.updating(plan.layer(), plan.scanRunId(), clock.instant().plus(leaseDuration));
     if (!writer.tryBeginLayerUpdate(updating)) {
+      if (evidence != null) {
+        try {
+          evidence.fail("layer update is already in progress: " + plan.layer().layerId(), List.of(), 0, 0, 0);
+        } catch (RuntimeException ignored) {
+          // Preserve the lease conflict as the public failure.
+        }
+        evidence.close();
+      }
       throw new IllegalStateException("layer update is already in progress: " + plan.layer().layerId());
     }
 
-    EvidenceWriter.Session evidence = null;
-    SnapshotHash memorySnapshot = new SnapshotHash();
-    ErrorAccumulator errors = new ErrorAccumulator();
-    int discovered = 0;
-    int processed = 0;
-    int fileCount = 0;
-    int coverageCount = 0;
-    int catalogRows = 0;
-    int validCatalogRows = 0;
-    int invalidCatalogRows = 0;
-    Set<Integer> orders = new LinkedHashSet<>();
     List<FileAsset> pendingFiles = new ArrayList<>();
     List<SpatialCoverage> pendingCoverages = new ArrayList<>();
     LeaseTracker leaseTracker = new LeaseTracker();
-    CoverageLayer lease = updating;
+    AtomicReference<CoverageLayer> lease = new AtomicReference<>(updating);
+    AtomicBoolean completed = new AtomicBoolean(false);
+    Thread shutdownHook = new Thread(() -> failOnShutdown(evidence, memorySnapshot, errors, progress, lease,
+        completed), "atlas-scan-shutdown");
     try {
-      if (!memoryMode) {
-        evidence = evidenceWriter.start(Path.of(plan.evidence().outputPath()), plan.scanRunId(), plan.layer().layerId());
-        evidence.phase("ENUMERATING");
-      }
+      Runtime.getRuntime().addShutdownHook(shutdownHook);
+      if (evidence != null) evidence.phase("ENUMERATING");
       try (Stream<org.zhejianglab.astro.atlas.core.InputItem> items = source.enumerate(plan)) {
         Iterator<org.zhejianglab.astro.atlas.core.InputItem> iterator = items.iterator();
         if (evidence != null) evidence.phase("DELETING_LAYER_COVERAGE");
@@ -90,9 +96,9 @@ public final class ScanService {
         CoverageExtractor extractor = CoverageExtractorResolver.resolve(plan.extraction());
         if (evidence != null) evidence.phase("EXTRACTING");
         while (iterator.hasNext()) {
-          lease = leaseTracker.maybeRenew(lease);
+          lease.set(leaseTracker.maybeRenew(lease.get()));
           var item = iterator.next();
-          discovered++;
+          progress.discovered();
           FileAsset fileAsset = FileAsset.from(item);
           ExtractionResult result;
           try {
@@ -108,15 +114,9 @@ public final class ScanService {
           }
           pendingFiles.add(fileAsset);
           pendingCoverages.addAll(result.coverages());
-          for (SpatialCoverage coverage : result.coverages()) orders.add(coverage.healpixOrder());
-          fileCount++;
-          coverageCount += result.coverages().size();
-          catalogRows += result.catalogRows();
-          validCatalogRows += result.validCatalogRows();
-          invalidCatalogRows += result.invalidCatalogRows();
-          processed++;
+          progress.processed(result);
           if (pendingFiles.size() + pendingCoverages.size() >= MAX_PENDING_RECORDS) {
-            lease = leaseTracker.maybeRenew(lease);
+            lease.set(leaseTracker.maybeRenew(lease.get()));
             if (evidence != null) evidence.phase("WRITING");
             writer.upsertBatch(pendingFiles, pendingCoverages);
             pendingFiles = new ArrayList<>();
@@ -124,7 +124,7 @@ public final class ScanService {
           }
         }
       }
-      lease = leaseTracker.maybeRenew(lease);
+      lease.set(leaseTracker.maybeRenew(lease.get()));
       if (evidence != null) evidence.phase("WRITING");
       if (!pendingFiles.isEmpty() || !pendingCoverages.isEmpty()) {
         writer.upsertBatch(pendingFiles, pendingCoverages);
@@ -132,45 +132,87 @@ public final class ScanService {
       if (errors.count() > 0) {
         throw new IllegalStateException("scan produced extraction errors: " + errors.first());
       }
+      ScanProgress.Snapshot snapshot = progress.snapshot();
       EvidenceWriter.EvidenceResult result = evidence == null
           ? new EvidenceWriter.EvidenceResult(memorySnapshot.finish(), null)
-          : evidence.complete(sortedOrders(orders), catalogRows, validCatalogRows, invalidCatalogRows);
-      CoverageLayer active = lease.active(result.snapshotSha256(), sortedOrders(orders), fileCount, coverageCount, 0);
+          : evidence.complete(snapshot.orders(), snapshot.catalogRows(), snapshot.validCatalogRows(), snapshot.invalidCatalogRows());
+      CoverageLayer active = lease.get().active(result.snapshotSha256(), snapshot.orders(), snapshot.fileCount(),
+          snapshot.coverageCount(), 0);
       if (!writer.finishLayerUpdate(active)) {
         throw new IllegalStateException("layer lease was lost before activation: " + plan.layer().layerId());
       }
+      completed.set(true);
       return new ScanSummary("COMPLETED", plan.scanRunId(), plan.layer().layerId(), result.snapshotSha256(),
-          discovered, processed, coverageCount, catalogRows, validCatalogRows, invalidCatalogRows,
-          0, sortedOrders(orders), result.path(), Instant.now());
+          snapshot.discovered(), snapshot.processed(), snapshot.coverageCount(), snapshot.catalogRows(),
+          snapshot.validCatalogRows(), snapshot.invalidCatalogRows(), 0, snapshot.orders(), result.path(), Instant.now());
     } catch (RuntimeException exception) {
       String failure = message(exception);
       if (errors.count() == 0) errors.add(failure);
-      String snapshot;
+      ScanProgress.Snapshot snapshot = progress.snapshot();
+      String snapshotHash;
       if (evidence != null) {
         try {
-          EvidenceWriter.EvidenceResult result = evidence.fail(failure, sortedOrders(orders), catalogRows,
-              validCatalogRows, invalidCatalogRows);
-          snapshot = result.snapshotSha256();
+          EvidenceWriter.EvidenceResult result = evidence.fail(failure, snapshot.orders(), snapshot.catalogRows(),
+              snapshot.validCatalogRows(), snapshot.invalidCatalogRows());
+          snapshotHash = result.snapshotSha256();
         } catch (RuntimeException evidenceFailure) {
           exception.addSuppressed(evidenceFailure);
-          snapshot = evidence.snapshotSha256();
+          snapshotHash = evidence.snapshotSha256();
         }
       } else {
-        snapshot = memorySnapshot.finish();
+        snapshotHash = memorySnapshot.finish();
       }
       try {
-        writer.finishLayerUpdate(lease.failed(errors.first(), snapshot, errors.count()));
+        writer.finishLayerUpdate(lease.get().failed(errors.first(), snapshotHash, errors.count()));
       } catch (RuntimeException ignored) {
         // Preserve the original failure; the adapter may be unavailable too.
       }
+      completed.set(true);
       throw exception;
     } finally {
+      removeShutdownHook(shutdownHook);
       if (evidence != null) evidence.close();
     }
   }
 
-  private static List<Integer> sortedOrders(Set<Integer> orders) {
-    return orders.stream().sorted().toList();
+  private void failOnShutdown(EvidenceWriter.Session evidence, SnapshotHash memorySnapshot,
+      ErrorAccumulator errors, ScanProgress progress, AtomicReference<CoverageLayer> lease,
+      AtomicBoolean completed) {
+    if (!completed.compareAndSet(false, true)) return;
+    String failure = "scanner process terminated before scan completed";
+    errors.add(failure);
+    ScanProgress.Snapshot snapshot = progress.snapshot();
+    String snapshotHash = null;
+    if (evidence != null) {
+      try {
+        evidence.error(failure);
+      } catch (RuntimeException ignored) {
+        // EvidenceWriter's own shutdown hook may have closed the streams first.
+      }
+      try {
+        snapshotHash = evidence.fail(failure, snapshot.orders(), snapshot.catalogRows(), snapshot.validCatalogRows(),
+            snapshot.invalidCatalogRows()).snapshotSha256();
+      } catch (RuntimeException ignored) {
+        snapshotHash = evidence.snapshotSha256();
+      }
+    } else {
+      snapshotHash = memorySnapshot.finish();
+    }
+    CoverageLayer current = lease.get();
+    if (current == null) return;
+    try {
+      writer.finishLayerUpdate(current.failed(errors.first(), snapshotHash, errors.count()));
+    } catch (RuntimeException ignored) {
+      // Preserve the process termination while making the best effort to close the lease.
+    }
+  }
+
+  private static void removeShutdownHook(Thread hook) {
+    try {
+      Runtime.getRuntime().removeShutdownHook(hook);
+    } catch (IllegalArgumentException | IllegalStateException ignored) {
+      // Shutdown is already in progress or the hook was not registered.
+    }
   }
 
   private static String message(Throwable exception) {
@@ -197,17 +239,49 @@ public final class ScanService {
     private int count;
     private String first;
 
-    void add(String value) {
+    synchronized void add(String value) {
       count++;
       if (first == null || first.isBlank()) first = value == null || value.isBlank() ? "unknown scan error" : value;
     }
 
-    int count() { return count; }
-    String first() { return first == null ? "unknown scan error" : first; }
+    synchronized int count() { return count; }
+    synchronized String first() { return first == null ? "unknown scan error" : first; }
+  }
+
+  private static final class ScanProgress {
+    private final Set<Integer> orders = Collections.synchronizedSet(new LinkedHashSet<>());
+    private int discovered;
+    private int processed;
+    private int fileCount;
+    private int coverageCount;
+    private int catalogRows;
+    private int validCatalogRows;
+    private int invalidCatalogRows;
+
+    synchronized void discovered() { discovered++; }
+
+    synchronized void processed(ExtractionResult result) {
+      processed++;
+      fileCount++;
+      coverageCount += result.coverages().size();
+      catalogRows += result.catalogRows();
+      validCatalogRows += result.validCatalogRows();
+      invalidCatalogRows += result.invalidCatalogRows();
+      orders.addAll(result.coverages().stream().map(SpatialCoverage::healpixOrder).toList());
+    }
+
+    synchronized Snapshot snapshot() {
+      return new Snapshot(discovered, processed, fileCount, coverageCount, catalogRows, validCatalogRows,
+          invalidCatalogRows, orders.stream().sorted().toList());
+    }
+
+    record Snapshot(int discovered, int processed, int fileCount, int coverageCount, int catalogRows,
+        int validCatalogRows, int invalidCatalogRows, List<Integer> orders) {}
   }
 
   private static final class SnapshotHash {
     private final MessageDigest digest;
+    private String value;
 
     SnapshotHash() {
       try {
@@ -217,13 +291,15 @@ public final class ScanService {
       }
     }
 
-    void add(FileAsset file) {
+    synchronized void add(FileAsset file) {
+      if (value != null) return;
       digest.update(file.fileId().getBytes(StandardCharsets.UTF_8));
       digest.update((byte) '\n');
     }
 
-    String finish() {
-      return java.util.HexFormat.of().formatHex(digest.digest());
+    synchronized String finish() {
+      if (value == null) value = java.util.HexFormat.of().formatHex(digest.digest());
+      return value;
     }
   }
 }

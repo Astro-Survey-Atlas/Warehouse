@@ -7,6 +7,7 @@ import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResourceList;
 import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.Watch;
@@ -98,7 +99,7 @@ public final class ScanRequestOperator implements AutoCloseable {
     }
   }
 
-  private void reconcile(
+  private synchronized void reconcile(
       MixedOperation<GenericKubernetesResource, GenericKubernetesResourceList, Resource<GenericKubernetesResource>> requests,
       GenericKubernetesResource eventResource) {
     if (eventResource == null || eventResource.getMetadata() == null
@@ -127,8 +128,19 @@ public final class ScanRequestOperator implements AutoCloseable {
             .resource(jobFactory.planConfigMap(current, namespace, configMapName, jobName, plan)).create();
       }
       Job job = client.batch().v1().jobs().inNamespace(namespace).withName(jobName).get();
+      String observedJobName = jobName;
+      Job equivalentJob = findEquivalentJob(namespace, parsed.name(), plan.sha256(), parsed.spec().scanner().image());
       if (job == null) {
         if (terminalForJob(current, jobName)) return;
+        job = equivalentJob;
+        if (job != null) {
+          observedJobName = job.getMetadata().getName();
+        }
+      } else if (equivalentJob != null && !jobName.equals(equivalentJob.getMetadata().getName())) {
+        job = equivalentJob;
+        observedJobName = job.getMetadata().getName();
+      }
+      if (job == null) {
         if (hasRunningLayerJob(namespace, parsed.spec().plan().layer().layerId(), jobName)) {
           updateStatus(resource, current, JobStatusMapper.status("WAITING", jobName,
               "LayerUpdateInProgress", "another non-terminal Job is refreshing this layer",
@@ -136,7 +148,7 @@ public final class ScanRequestOperator implements AutoCloseable {
           return;
         }
         client.batch().v1().jobs().inNamespace(namespace)
-            .resource(jobFactory.scannerJob(current, namespace, jobName, configMapName, parsed.spec(), plan)).create();
+            .resource(jobFactory.scannerJob(current, namespace, jobName, configMapName, parsed.spec(), plan, executionHash)).create();
         updateStatus(resource, current, JobStatusMapper.status("SUBMITTED", jobName, null, null,
             generation(current), Map.of()));
         return;
@@ -147,18 +159,18 @@ public final class ScanRequestOperator implements AutoCloseable {
         ScannerSummaryParser.Validation validation = ScannerSummaryParser.validateSuccessfulRun(summary,
             parsed.spec().plan().scanRunId(), parsed.spec().plan().layer().layerId());
         if (!validation.valid()) {
-          updateStatus(resource, current, JobStatusMapper.status("FAILED", jobName, validation.reason(),
+          updateStatus(resource, current, JobStatusMapper.status("FAILED", observedJobName, validation.reason(),
               "completed Job did not provide a matching scanner summary", generation(current), summary));
           return;
         }
       }
-      updateStatus(resource, current, JobStatusMapper.status(observation.phase(), jobName,
+      updateStatus(resource, current, JobStatusMapper.status(observation.phase(), observedJobName,
           observation.reason(), observation.message(), generation(current), summary));
     } catch (OperatorValidationException exception) {
       updateStatus(resource, current, invalidStatus(current, exception.getMessage()));
     } catch (Exception exception) {
       System.err.println("scan request reconcile failed for " + current.getMetadata().getName()
-          + ": " + exception.getClass().getSimpleName());
+          + ": " + exception.getClass().getSimpleName() + ": " + exception.getMessage());
     }
   }
 
@@ -198,6 +210,54 @@ public final class ScanRequestOperator implements AutoCloseable {
         .filter(candidate -> candidate.getMetadata() != null && !currentJobName.equals(candidate.getMetadata().getName()))
         .map(JobStatusMapper::observe)
         .anyMatch(observation -> !terminal(observation.phase()));
+  }
+
+  private Job findEquivalentJob(String namespace, String requestName, String planHash, String image) {
+    List<Job> jobs = client.batch().v1().jobs().inNamespace(namespace)
+        .withLabel(OperatorConstants.REQUEST_LABEL, KubeNames.dnsLabel(requestName, 63))
+        .list().getItems();
+    return selectEquivalentJob(jobs, planHash, image);
+  }
+
+  static Job selectEquivalentJob(List<Job> jobs, String planHash, String image) {
+    if (jobs == null || jobs.isEmpty() || planHash == null || image == null || image.isBlank()) return null;
+    Job selected = null;
+    int selectedRank = Integer.MAX_VALUE;
+    String selectedTimestamp = "";
+    for (Job job : jobs) {
+      if (!matchesExecution(job, planHash, image)) continue;
+      JobStatusMapper.Observation observation = JobStatusMapper.observe(job);
+      int rank = candidateRank(observation.phase());
+      String timestamp = job.getMetadata() == null || job.getMetadata().getCreationTimestamp() == null
+          ? "" : job.getMetadata().getCreationTimestamp();
+      if (selected == null || rank < selectedRank
+          || (rank == selectedRank && timestamp.compareTo(selectedTimestamp) > 0)) {
+        selected = job;
+        selectedRank = rank;
+        selectedTimestamp = timestamp;
+      }
+    }
+    return selected;
+  }
+
+  private static boolean matchesExecution(Job job, String planHash, String image) {
+    if (job == null || job.getMetadata() == null) return false;
+    Map<String, String> annotations = job.getMetadata().getAnnotations();
+    if (annotations == null || !planHash.equals(annotations.get(OperatorConstants.PLAN_HASH_ANNOTATION))) {
+      return false;
+    }
+    if (job.getSpec() == null || job.getSpec().getTemplate() == null
+        || job.getSpec().getTemplate().getSpec() == null
+        || job.getSpec().getTemplate().getSpec().getContainers() == null) return false;
+    for (Container container : job.getSpec().getTemplate().getSpec().getContainers()) {
+      if (image.equals(container.getImage())) return true;
+    }
+    return false;
+  }
+
+  private static int candidateRank(String phase) {
+    if (!terminal(phase)) return 0;
+    return "SUCCEEDED".equals(phase) ? 1 : 2;
   }
 
   private static Map<String, Object> invalidStatus(GenericKubernetesResource resource, String message) {

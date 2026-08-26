@@ -5,7 +5,7 @@ metadata:
   namespace: atlas-warehouse
 spec:
   scanner:
-    image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.2.0-20260825-fix2
+    image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.2.0-20260826-cutover1
     backoffLimit: 0
     activeDeadlineSeconds: 1800
     ttlSecondsAfterFinished: 86400

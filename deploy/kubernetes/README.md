@@ -1,4 +1,39 @@
-# Kubernetes Operator
+# Kubernetes Deployment
+
+The new runtime is self-managed in the `atlas-warehouse` namespace. Install
+the repository chart before creating ScanRequests; scanner Jobs never use the
+legacy `warehouse` Services or `astro_*` indices. The old release is not a
+runtime prerequisite; its five old PVs and data directories have been
+released. Other retained PVs belong to unrelated namespaces and are outside
+this deployment.
+
+## Infrastructure
+
+Create the namespace-local MinIO Secret out of band, then install the vendored
+Elasticsearch, MinIO, Kafka, and `ast_*` mapping bootstrap chart:
+
+```text
+kubectl apply -f deploy/kubernetes/namespace.yaml
+kubectl -n atlas-warehouse create secret generic atlas-warehouse-minio-credentials \
+  --from-literal=root-user="$ATLAS_MINIO_ROOT_USER" \
+  --from-literal=root-password="$ATLAS_MINIO_ROOT_PASSWORD"
+helm upgrade --install atlas-warehouse ./deploy/helm/atlas-warehouse-infra \
+  --namespace atlas-warehouse --create-namespace --wait --timeout 15m
+```
+
+The chart owns these stable endpoints:
+
+```text
+http://atlas-warehouse-elasticsearch.atlas-warehouse.svc.cluster.local:9200
+http://atlas-warehouse-minio.atlas-warehouse.svc.cluster.local:9000
+atlas-warehouse-kafka.atlas-warehouse.svc.cluster.local:9092
+```
+
+It creates only `ast_layer_index_v1`, `ast_file_index_v1`, and
+`ast_coverage_index_v1` with strict mappings. The chart does not install Flink,
+the legacy metadata operator, or any `astro_*` resource.
+
+## Operator
 
 ## Build Images
 
@@ -17,7 +52,7 @@ Job image must contain
 
 ## Install
 
-The deployment watches `ScanRequest` objects in all namespaces by default. The
+The checked-in deployment watches `ScanRequest` objects in `atlas-warehouse`.
 ClusterRole intentionally does not grant Secret read access. Scanner Jobs
 receive only the Secret keys referenced by the request.
 
@@ -26,18 +61,16 @@ kubectl apply -f deploy/kubernetes/namespace.yaml
 kubectl apply -f deploy/kubernetes/crd.yaml
 kubectl apply -f deploy/kubernetes/rbac.yaml
 kubectl apply -f deploy/kubernetes/operator-deployment.yaml
-
-# Create this once in the ScanRequest namespace (the example uses `atlas`).
 kubectl apply -f deploy/kubernetes/evidence-pvc.example.yaml
 ```
 
 Create credential Secrets out of band. Values are never put in a ScanRequest:
 
 ```text
-kubectl -n atlas create secret generic atlas-source-credentials \
+kubectl -n atlas-warehouse create secret generic atlas-source-credentials \
   --from-literal=accessKey="$ATLAS_SOURCE_ACCESS_KEY" \
   --from-literal=secretKey="$ATLAS_SOURCE_SECRET_KEY"
-kubectl -n atlas create secret generic atlas-elasticsearch-credentials \
+kubectl -n atlas-warehouse create secret generic atlas-elasticsearch-credentials \
   --from-literal=username="$ATLAS_ES_USERNAME" \
   --from-literal=password="$ATLAS_ES_PASSWORD"
 ```
@@ -50,8 +83,8 @@ submit it:
 
 ```text
 kubectl apply -f deploy/kubernetes/scanrequest-oss.example.yaml
-kubectl -n atlas get scanrequest survey-release-1 -o yaml
-kubectl -n atlas get job -l atlas.zhejianglab.org/scan-request=survey-release-1
+kubectl -n atlas-warehouse get scanrequest survey-release-1 -o yaml
+kubectl -n atlas-warehouse get job -l atlas.zhejianglab.org/scan-request=survey-release-1
 ```
 
 The Operator creates an immutable plan ConfigMap and one scanner Job per plan
@@ -72,22 +105,29 @@ not part of the scanner MVP.
 
 The resource and lifecycle contract is documented in `docs/operator.md`.
 
-For the disposable in-cluster MinIO fixture, submit
-`scanrequest-minio-smoke.yaml`. It uses `atlas-minio-smoke-credentials` by key
-reference in the checked-in example; create that temporary Secret from your
-fixture credentials before submission, and create its namespace-local evidence
-PVC first:
+For bounded smoke workloads, create the namespace-local evidence PVC and apply
+the relevant ScanRequest. The DESI examples use the MinIO bucket owned by this
+chart; create `atlas-minio-desi-credentials` in `atlas-warehouse` with the
+same access and secret keys as the MinIO Secret. The disposable local fixture
+uses the chart Secret directly:
 
 ```text
 kubectl apply -f deploy/kubernetes/evidence-pvc-minio-smoke.yaml
 ```
 
 ```text
-kubectl -n warehouse create secret generic atlas-minio-smoke-credentials \
-  --from-literal=accessKey="$MINIO_ACCESS_KEY" \
-  --from-literal=secretKey="$MINIO_SECRET_KEY"
+kubectl apply -f deploy/kubernetes/atlas-warehouse-minio-credentials.example.yaml
+kubectl apply -f deploy/kubernetes/scanrequest-minio-smoke.yaml
+kubectl apply -f deploy/kubernetes/scanrequest-desi-catalog.yaml
+kubectl apply -f deploy/kubernetes/scanrequest-desi-overlap.yaml
+kubectl apply -f deploy/kubernetes/scanrequest-csst-oss-catalog.yaml
+kubectl apply -f deploy/kubernetes/scanrequest-csst-oss-demo.yaml
 ```
 
-It scans
-`astro-artifacts/astro/smoke/`; it is intentionally tied to the existing
-`warehouse` test namespace and is not a production deployment.
+CSST examples additionally require the existing OSS credential keys to be
+created in `atlas-warehouse`. They scan bounded object keys/prefixes only;
+they do not scan the Euclid multi-terabyte root or any full survey. A full
+bounded product prefix should use the current scanner image, whose bulk writer
+uses 100-record batches and a 90-second Elasticsearch request timeout. Keep
+the Euclid `MER/` root to inventory-only and split unsupported FITS products
+into explicit failed evidence rather than treating them as coverage.

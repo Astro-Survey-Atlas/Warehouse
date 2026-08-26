@@ -53,6 +53,10 @@ mvn -f index-elasticsearch/pom.xml \
   -Dexec.args="--endpoint http://127.0.0.1:19200 --install --recreate --verify"
 ```
 
-The current deployment policy is external Elasticsearch by default. A future project Helm chart may enable an optional single-node Elasticsearch subchart when dedicated resources are available; scanner and query code do not depend on that topology.
+The repository deployment policy is the self-managed `atlas-warehouse` Helm
+release by default for the new runtime. It supplies a dedicated single-node
+Elasticsearch and does not share the frozen legacy `warehouse` release or its
+`astro_*` indices. Scanner and query code still accept an explicitly supplied
+external endpoint and do not depend on this topology.
 
 The modules currently build regular Maven jars; deployment packaging and a shaded distribution remain a later step.

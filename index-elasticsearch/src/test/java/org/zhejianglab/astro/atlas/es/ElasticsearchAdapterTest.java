@@ -178,10 +178,10 @@ class ElasticsearchAdapterTest {
     server.start();
     try (ElasticsearchAdapter adapter = adapter(server)) {
       List<FileAsset> files = new ArrayList<>();
-      for (int index = 0; index < 501; index++) files.add(file("s3://survey/bulk-" + index + ".fits"));
+      for (int index = 0; index < 101; index++) files.add(file("s3://survey/bulk-" + index + ".fits"));
       adapter.upsertBatch(files, List.of());
       assertEquals(2, requests.get());
-      assertEquals(List.of(500, 1), sizes);
+      assertEquals(List.of(100, 1), sizes);
     } finally {
       server.stop(0);
     }

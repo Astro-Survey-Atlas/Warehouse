@@ -32,7 +32,7 @@ public final class ScannerJobFactory {
     return new ConfigMapBuilder()
         .withApiVersion("v1")
         .withKind("ConfigMap")
-        .withMetadata(metadata(request, namespace, configMapName, jobName, plan.sha256(), null))
+        .withMetadata(metadata(request, namespace, configMapName, jobName, plan.sha256(), null, null))
         .withImmutable(true)
         .withData(Map.of("plan.json", plan.json()))
         .build();
@@ -45,6 +45,17 @@ public final class ScannerJobFactory {
       String configMapName,
       ScanRequestSpec spec,
       RenderedPlan plan) {
+    return scannerJob(request, namespace, jobName, configMapName, spec, plan, null);
+  }
+
+  public Job scannerJob(
+      GenericKubernetesResource request,
+      String namespace,
+      String jobName,
+      String configMapName,
+      ScanRequestSpec spec,
+      RenderedPlan plan,
+      String executionHash) {
     ScannerSpec scanner = spec.scanner();
     List<Volume> volumes = new ArrayList<>(plan.volumes());
     volumes.add(new VolumeBuilder().withName("scan-plan")
@@ -75,7 +86,8 @@ public final class ScannerJobFactory {
     return new JobBuilder()
         .withApiVersion("batch/v1")
         .withKind("Job")
-        .withMetadata(metadata(request, namespace, jobName, jobName, plan.sha256(), spec.plan().layer().layerId()))
+        .withMetadata(metadata(request, namespace, jobName, jobName, plan.sha256(),
+            spec.plan().layer().layerId(), executionHash))
         .withSpec(new JobSpecBuilder()
             .withBackoffLimit(valueOr(scanner.backoffLimit(), 1))
             .withActiveDeadlineSeconds(valueOr(scanner.activeDeadlineSeconds(), 86_400L))
@@ -84,6 +96,7 @@ public final class ScannerJobFactory {
                 .withMetadata(new ObjectMetaBuilder().withLabels(labels(request, jobName, spec.plan().layer().layerId())).build())
                 .withSpec(new PodSpecBuilder()
                     .withRestartPolicy("Never")
+                    .withTerminationGracePeriodSeconds(120L)
                     .withServiceAccountName(scanner.serviceAccountName())
                     .withContainers(container)
                     .withVolumes(volumes)
@@ -99,12 +112,16 @@ public final class ScannerJobFactory {
       String name,
       String jobName,
       String planHash,
-      String layerId) {
+      String layerId,
+      String executionHash) {
     ObjectMetaBuilder builder = new ObjectMetaBuilder()
         .withName(name)
         .withNamespace(namespace)
         .withLabels(labels(request, jobName, layerId))
         .addToAnnotations(OperatorConstants.PLAN_HASH_ANNOTATION, planHash);
+    if (executionHash != null && !executionHash.isBlank()) {
+      builder.addToAnnotations(OperatorConstants.EXECUTION_HASH_ANNOTATION, executionHash);
+    }
     if (request.getMetadata().getUid() != null) {
       builder.withOwnerReferences(new OwnerReferenceBuilder()
           .withApiVersion(OperatorConstants.API_VERSION)

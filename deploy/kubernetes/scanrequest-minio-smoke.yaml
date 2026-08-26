@@ -5,7 +5,7 @@ metadata:
   namespace: atlas-warehouse
 spec:
   scanner:
-    image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.2.0-20260825-fix3
+    image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.2.0-20260826-cutover1
     backoffLimit: 1
     activeDeadlineSeconds: 1800
     ttlSecondsAfterFinished: 86400
@@ -44,7 +44,7 @@ spec:
           secretKeyEnv: ATLAS_SOURCE_SECRET_KEY
       location:
         bucket: astro-artifacts
-        prefix: astro/smoke/
+        prefix: astro/smoke/assets-four-modalities/gaia-catalog-49cf5d4b.csv
     filters:
       includeSuffixes:
         - .csv

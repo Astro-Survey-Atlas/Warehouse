@@ -28,17 +28,20 @@ class ScannerJobFactoryTest {
     String jobName = KubeNames.scannerJobName("nightly-scan", plan.sha256());
     String configMapName = KubeNames.planConfigMapName(jobName);
 
-    Job job = factory.scannerJob(request, "atlas", jobName, configMapName, spec, plan);
+    Job job = factory.scannerJob(request, "atlas", jobName, configMapName, spec, plan, "execution-hash");
 
     assertEquals(jobName, job.getMetadata().getName());
     assertEquals("atlas-scanner:test", job.getSpec().getTemplate().getSpec().getContainers().get(0).getImage());
     assertEquals(List.of("java", "-jar", "/app/scanner-cli.jar"),
         job.getSpec().getTemplate().getSpec().getContainers().get(0).getCommand());
+    assertEquals(120L, job.getSpec().getTemplate().getSpec().getTerminationGracePeriodSeconds());
     assertEquals(2, job.getSpec().getTemplate().getSpec().getVolumes().size());
     assertEquals("atlas-evidence", job.getSpec().getTemplate().getSpec().getVolumes().get(1)
         .getPersistentVolumeClaim().getClaimName());
     assertEquals("uid-1", job.getMetadata().getOwnerReferences().get(0).getUid());
     assertTrue(job.getMetadata().getAnnotations().containsKey(OperatorConstants.PLAN_HASH_ANNOTATION));
+    assertEquals("execution-hash",
+        job.getMetadata().getAnnotations().get(OperatorConstants.EXECUTION_HASH_ANNOTATION));
     assertEquals("assets", job.getMetadata().getLabels().get(OperatorConstants.TRACKING_LABEL_PREFIX + "caller"));
     assertEquals("assets", job.getSpec().getTemplate().getMetadata().getLabels()
         .get(OperatorConstants.TRACKING_LABEL_PREFIX + "caller"));

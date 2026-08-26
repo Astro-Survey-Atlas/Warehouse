@@ -82,3 +82,13 @@ sequenceDiagram
 
 FileAsset IDs remain global URI hashes. SpatialCoverage IDs include layer ID,
 so replacement never deletes another layer's association with the same file.
+
+## Deployment Ownership
+
+The repository Helm release `deploy/helm/atlas-warehouse-infra` owns the new
+runtime dependencies in namespace `atlas-warehouse`: single-node
+Elasticsearch, standalone MinIO, Kafka, and strict `ast_*` index bootstrap. The
+Operator runs in `atlas-system` but watches only `atlas-warehouse`; its Scanner
+Jobs, evidence PVCs, and source credentials are namespace-local. The legacy
+`warehouse` Helm release is a migration reference only and is not part of this
+runtime path.

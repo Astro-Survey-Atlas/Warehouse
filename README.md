@@ -6,7 +6,7 @@ This repository is a new project. `/home/aaron/Repo/data-warehouse` is a frozen 
 
 ## Status
 
-The local vertical slice and remote adapters are implemented and covered by module tests. The scanner can enumerate local files or S3-compatible objects, extract FITS/catalog coverage through a shared content seam, write the fixed Elasticsearch indices, and the query service can read coverage candidates and resolve FileAssets. A disposable OSS/Elasticsearch integration run has verified the current WCS footprint, strict mapping, stable upserts, point/cone/HEALPix queries, and cursor pagination. External Elasticsearch is the default deployment mode; a bundled instance remains optional.
+The local vertical slice and remote adapters are implemented and covered by module tests. The scanner can enumerate local files or S3-compatible objects, extract FITS/catalog coverage through a shared content seam, write the fixed Elasticsearch indices, and the query service can read coverage candidates and resolve FileAssets. A disposable OSS/Elasticsearch integration run has verified the current WCS footprint, strict mapping, stable upserts, point/cone/HEALPix queries, and cursor pagination. The repository includes a self-managed Helm release for the new Elasticsearch, MinIO, Kafka, and `ast_*` mappings; external endpoints remain supported when explicitly configured.
 
 The build has five runtime modules plus one shared remote adapter:
 
@@ -27,6 +27,7 @@ The build has five runtime modules plus one shared remote adapter:
 - `docs/index-contract.md`: Elasticsearch document and spatial semantics.
 - `docs/query-api.md`: query endpoints and pagination.
 - `docs/operator.md`: ScanRequest, Job translation, status, and credential-reference contract.
+- `deploy/helm/atlas-warehouse-infra`: self-managed runtime infrastructure chart.
 - `docs/implementation-plan.md`: staged delivery plan and verification gates.
 - `docs/adr/`: decisions that should not be rediscovered during implementation.
 

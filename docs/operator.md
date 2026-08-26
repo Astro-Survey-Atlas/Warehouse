@@ -16,6 +16,15 @@ The PVC must exist in the ScanRequest namespace. A CSI-backed object-store
 volume can satisfy this contract; direct object-store evidence writes are
 deferred.
 
+## Deployment Boundary
+
+The supported cluster deployment uses `atlas-warehouse` for Scanner Jobs,
+evidence PVCs, and namespace-local credential references. The repository Helm
+release `deploy/helm/atlas-warehouse-infra` owns the new Elasticsearch, MinIO,
+Kafka, and strict `ast_*` mapping bootstrap. Scanner sink plans use
+`atlas-warehouse-elasticsearch.atlas-warehouse.svc.cluster.local:9200`; the
+legacy `warehouse` Services and `astro_*` indices are never runtime fallbacks.
+
 ## Reconciliation
 
 For a valid request the Operator:
@@ -25,11 +34,16 @@ For a valid request the Operator:
 3. Projects credentials through Secret environment/file references without
    reading their values.
 4. Labels the Job and Pod with a DNS-safe layer identity.
-5. Waits when another non-terminal Job for the same layer exists.
-6. Creates the plan/execution-hash-named scanner Job and reports its summary.
+5. Reuses an equivalent Job already owned by the ScanRequest when an Operator
+   rollout changed the historical execution hash; active work wins, then a
+   successful equivalent Job wins over a stale failed duplicate.
+6. Waits when another non-terminal Job for the same layer exists, then creates
+   the plan/execution-hash-named scanner Job and reports its summary.
 
 Changing plan, credential bindings, image, or execution settings creates a new
-Job after the current layer Job terminates. Completed Jobs remain under TTL for
+Job after the current layer Job terminates. Equivalent Jobs are matched by the
+rendered plan hash and scanner image so an Operator upgrade cannot orphan an
+in-flight or already successful execution. Completed Jobs remain under TTL for
 diagnosis; they are not indexed result history. Elasticsearch layer leases also
 protect CLI and cross-request concurrency.
 

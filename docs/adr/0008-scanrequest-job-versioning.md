@@ -11,7 +11,11 @@ names the ConfigMap and scanner Job with an identity derived from the rendered
 plan, credential binding references, and scanner execution settings. A repeated
 reconcile of the same ScanRequest therefore observes the same resources. A
 changed execution input creates a new Job rather than attempting to mutate an
-immutable Job's Pod template.
+immutable Job's Pod template. During Operator upgrades, an existing Job with
+the same rendered plan hash and scanner image is treated as the equivalent
+execution even if an older Operator serialized the execution settings
+differently; active work is adopted and a successful duplicate is preferred
+over a stale failed duplicate.
 
 ## Context
 
@@ -26,6 +30,9 @@ keeps old runs inspectable until the configured Job TTL or owner deletion.
 - Plan ConfigMaps are immutable and contain no credential values.
 - A changed plan may leave more than one historical Job temporarily present.
 - The initial Operator does not cancel an in-flight old Job when a plan changes.
+- Operator upgrades do not abandon equivalent in-flight or successful Jobs;
+  Jobs are selected by request ownership, rendered plan hash, and scanner
+  image, with non-terminal work and success taking precedence over failures.
 - Cleanup is delegated to owner references and `ttlSecondsAfterFinished`; an
   explicit cancellation policy can be added later without changing scan
   semantics.
