@@ -143,6 +143,15 @@ public final class ScanRequestOperator implements AutoCloseable {
       }
       JobStatusMapper.Observation observation = JobStatusMapper.observe(job);
       Map<String, Object> summary = terminal(observation.phase()) ? scannerSummary(namespace, job) : Map.of();
+      if ("SUCCEEDED".equals(observation.phase())) {
+        ScannerSummaryParser.Validation validation = ScannerSummaryParser.validateSuccessfulRun(summary,
+            parsed.spec().plan().scanRunId(), parsed.spec().plan().layer().layerId());
+        if (!validation.valid()) {
+          updateStatus(resource, current, JobStatusMapper.status("FAILED", jobName, validation.reason(),
+              "completed Job did not provide a matching scanner summary", generation(current), summary));
+          return;
+        }
+      }
       updateStatus(resource, current, JobStatusMapper.status(observation.phase(), jobName,
           observation.reason(), observation.message(), generation(current), summary));
     } catch (OperatorValidationException exception) {
@@ -169,7 +178,7 @@ public final class ScanRequestOperator implements AutoCloseable {
   private Map<String, Object> scannerSummary(String namespace, Job job) {
     try {
       List<Pod> pods = client.pods().inNamespace(namespace)
-          .withLabel("job-name", job.getMetadata().getName()).list().getItems();
+          .withLabel(OperatorConstants.JOB_LABEL, job.getMetadata().getName()).list().getItems();
       if (pods == null || pods.isEmpty()) return Map.of();
       Pod summaryPod = pods.stream()
           .filter(pod -> pod.getStatus() != null && "Succeeded".equals(pod.getStatus().getPhase()))

@@ -16,23 +16,23 @@ import org.zhejianglab.astro.atlas.core.SourceType;
 
 public final class LocalSourceAdapter implements SourceAdapter {
   @Override
-  public List<InputItem> enumerate(ScanPlan plan) {
+  public Stream<InputItem> enumerate(ScanPlan plan) {
     if (plan.source() == null || plan.source().connector() == null || plan.source().connector().type() != SourceType.LOCAL) {
       throw new IllegalArgumentException("LocalSourceAdapter requires a local source");
     }
     Path root = Path.of(plan.source().location().rootPath()).toAbsolutePath().normalize();
     if (Files.isRegularFile(root)) {
-      if (!isSupported(root, plan)) return List.of();
-      return List.of(toInputItem(root.getParent(), root));
+      if (!isSupported(root, plan)) return Stream.empty();
+      return Stream.of(toInputItem(root.getParent(), root));
     }
     if (!Files.isDirectory(root)) throw new IllegalArgumentException("local source path is not a file or directory: " + root);
-    try (Stream<Path> paths = Files.walk(root)) {
+    try {
+      Stream<Path> paths = Files.walk(root);
       return paths.filter(Files::isRegularFile)
           .filter(path -> isSupported(path, plan))
           .filter(path -> !isExcluded(root, path, plan))
-          .sorted()
           .map(path -> toInputItem(root, path))
-          .toList();
+          .onClose(paths::close);
     } catch (IOException exception) {
       throw new IllegalStateException("failed to enumerate local source: " + root, exception);
     }
@@ -61,7 +61,7 @@ public final class LocalSourceAdapter implements SourceAdapter {
 
   private static InputItem toInputItem(Path root, Path path) {
     try {
-      String parentUri = root == null ? path.getParent().toUri().toString() : path.getParent().toUri().toString();
+      String parentUri = path.getParent() == null ? path.toUri().toString() : path.getParent().toUri().toString();
       return new InputItem(path.toUri().toString(), path.getFileName().toString(), parentUri,
           FileType.fromFileName(path.getFileName().toString()), Files.size(path), Files.getLastModifiedTime(path).toInstant());
     } catch (IOException exception) {

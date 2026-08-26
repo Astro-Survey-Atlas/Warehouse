@@ -2,10 +2,10 @@ apiVersion: atlas.zhejianglab.org/v1alpha1
 kind: ScanRequest
 metadata:
   name: minio-catalog-smoke
-  namespace: warehouse
+  namespace: atlas-warehouse
 spec:
   scanner:
-    image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.1.0
+    image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.2.0-20260825-fix3
     backoffLimit: 1
     activeDeadlineSeconds: 1800
     ttlSecondsAfterFinished: 86400
@@ -21,12 +21,12 @@ spec:
       mountPath: /var/lib/atlas-evidence
   credentials:
     source:
-      secretName: atlas-minio-smoke-credentials
-      accessKeyKey: accessKey
-      secretKeyKey: secretKey
+      secretName: atlas-warehouse-minio-credentials
+      accessKeyKey: root-user
+      secretKeyKey: root-password
   plan:
     version: 2
-    scanRunId: minio-catalog-smoke-20260825
+    scanRunId: minio-catalog-smoke-newinfra-20260826
     layer:
       layerId: smoke-catalog
       surveyId: smoke
@@ -37,7 +37,7 @@ spec:
     source:
       connector:
         type: s3
-        endpoint: http://warehouse-minio.warehouse.svc.cluster.local:9000
+        endpoint: http://atlas-warehouse-minio.atlas-warehouse.svc.cluster.local:9000
         region: us-east-1
         credentialRef:
           accessKeyEnv: ATLAS_SOURCE_ACCESS_KEY
@@ -57,7 +57,7 @@ spec:
     sink:
       connector:
         type: elasticsearch
-        endpoint: http://warehouse-elasticsearch.warehouse.svc.cluster.local:9200
+        endpoint: http://atlas-warehouse-elasticsearch.atlas-warehouse.svc.cluster.local:9200
         credentialRef: {}
     evidence:
-      outputPath: /var/lib/atlas-evidence/minio-catalog-smoke-20260825
+      outputPath: /var/lib/atlas-evidence/minio-catalog-smoke-newinfra-20260826

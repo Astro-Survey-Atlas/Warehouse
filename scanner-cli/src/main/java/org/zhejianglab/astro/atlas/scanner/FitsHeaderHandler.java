@@ -55,6 +55,11 @@ public final class FitsHeaderHandler implements CoverageExtractor {
             CoverageMethod.FITS_HEADER_POSITION, CoveragePrecision.ENTRYPOINT_ONLY, null);
         return;
       }
+      String wcsFrameError = Wcs.frameError(header);
+      if (wcsFrameError != null) {
+        context.addError(wcsFrameError);
+        return;
+      }
       Wcs wcs = Wcs.from(header);
       if (wcs == null) {
         context.addError(Wcs.hasGeometry(header)
@@ -137,17 +142,32 @@ public final class FitsHeaderHandler implements CoverageExtractor {
       cd12 = matrix[1];
       cd21 = matrix[2];
       cd22 = matrix[3];
-      String ctype = (header.getOrDefault("CTYPE1", "") + header.getOrDefault("CTYPE2", ""))
+      String ctype = (text(header, "CTYPE1") + text(header, "CTYPE2"))
           .toUpperCase(java.util.Locale.ROOT);
       tan = ctype.isBlank() || ctype.contains("TAN");
     }
 
+    private static String frameError(Map<String, String> header) {
+      String ctype1 = text(header, "CTYPE1").toUpperCase(java.util.Locale.ROOT);
+      String ctype2 = text(header, "CTYPE2").toUpperCase(java.util.Locale.ROOT);
+      if (ctype1.isBlank() || ctype2.isBlank()
+          || !ctype1.startsWith("RA---") || !ctype2.startsWith("DEC--")) {
+        return "FITS WCS celestial axes must be explicit RA/DEC";
+      }
+      if (!ctype1.contains("-TAN") || !ctype2.contains("-TAN")) {
+        return "unsupported FITS WCS projection; only TAN is supported";
+      }
+      if (!"ICRS".equalsIgnoreCase(text(header, "RADESYS"))) {
+        return "FITS WCS reference frame must be explicitly ICRS";
+      }
+      return null;
+    }
+
     private static Wcs from(Map<String, String> header) {
       if (!hasAll(header, "CRVAL1", "CRVAL2", "CRPIX1", "CRPIX2", "NAXIS1", "NAXIS2")) return null;
-      String ctype1 = header.getOrDefault("CTYPE1", "").toUpperCase(java.util.Locale.ROOT);
-      String ctype2 = header.getOrDefault("CTYPE2", "").toUpperCase(java.util.Locale.ROOT);
-      if ((!ctype1.isBlank() && !ctype1.contains("TAN"))
-          || (!ctype2.isBlank() && !ctype2.contains("TAN"))) return null;
+      String ctype1 = text(header, "CTYPE1").toUpperCase(java.util.Locale.ROOT);
+      String ctype2 = text(header, "CTYPE2").toUpperCase(java.util.Locale.ROOT);
+      if (!ctype1.contains("TAN") || !ctype2.contains("TAN")) return null;
       try {
         double[] matrix = matrix(header);
         Wcs wcs = new Wcs(header, matrix);
@@ -249,6 +269,16 @@ public final class FitsHeaderHandler implements CoverageExtractor {
     private static boolean hasAll(Map<String, String> header, String... keys) {
       for (String key : keys) if (!header.containsKey(key)) return false;
       return true;
+    }
+
+    private static String text(Map<String, String> header, String key) {
+      String value = header.get(key);
+      if (value == null) return "";
+      value = value.trim();
+      if (value.length() >= 2 && value.startsWith("'") && value.endsWith("'")) {
+        value = value.substring(1, value.length() - 1);
+      }
+      return value.trim();
     }
 
     private static double number(Map<String, String> header, String key) {

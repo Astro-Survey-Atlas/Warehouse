@@ -1,0 +1,54 @@
+{{- if .Values.indexBootstrap.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "atlas-warehouse-infra.fullname" . }}-index-bootstrap
+  labels:
+    {{- include "atlas-warehouse-infra.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.indexBootstrap.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "atlas-warehouse-infra.name" . }}-index-bootstrap
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: index-bootstrap
+          image: "{{ .Values.indexBootstrap.image.repository }}:{{ .Values.indexBootstrap.image.tag }}"
+          imagePullPolicy: {{ .Values.indexBootstrap.image.pullPolicy }}
+          env:
+            - name: ES_ENDPOINT
+              value: {{ .Values.indexBootstrap.esEndpoint | quote }}
+          command: ["sh", "-ec"]
+          args:
+            - |
+              until curl -fsS "$ES_ENDPOINT/_cluster/health" >/dev/null; do sleep 3; done
+              for mapping in layer file coverage; do
+                curl -fsS -X PUT "$ES_ENDPOINT/_index_template/ast_${mapping}_index_v1_template" \
+                  -H 'Content-Type: application/json' --data-binary @"/mappings/${mapping}.json"
+              done
+              for index in ast_layer_index_v1 ast_file_index_v1 ast_coverage_index_v1; do
+                status="$(curl -sS -o /dev/null -w '%{http_code}' "$ES_ENDPOINT/$index")"
+                if [ "$status" = "404" ]; then
+                  curl -fsS -X PUT "$ES_ENDPOINT/$index" \
+                    -H 'Content-Type: application/json' \
+                    --data '{"settings":{"number_of_replicas":0}}'
+                elif [ "$status" != "200" ]; then
+                  echo "unexpected status for $index: $status" >&2
+                  exit 1
+                fi
+              done
+          volumeMounts:
+            - name: mappings
+              mountPath: /mappings
+              readOnly: true
+      volumes:
+        - name: mappings
+          configMap:
+            name: {{ include "atlas-warehouse-infra.fullname" . }}-index-mappings
+{{- end }}

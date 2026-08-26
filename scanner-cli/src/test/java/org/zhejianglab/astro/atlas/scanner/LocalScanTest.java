@@ -7,7 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.zhejianglab.astro.atlas.core.CredentialRef;
@@ -107,14 +109,12 @@ class LocalScanTest {
         StandardCharsets.UTF_8);
     InMemoryIndex index = new InMemoryIndex();
 
-    ScanSummary summary = new ScanService(new LocalSourceAdapter(), index).scan(
-        catalogPlan(catalog, new CatalogSpec("sky ra", "sky dec", null, null, null)));
+    assertThrows(IllegalStateException.class, () -> new ScanService(new LocalSourceAdapter(), index).scan(
+        catalogPlan(catalog, new CatalogSpec("sky ra", "sky dec", null, null, null))));
 
-    assertEquals(3, summary.catalogRowCount());
-    assertEquals(2, summary.validCatalogRowCount());
-    assertEquals(1, summary.invalidCatalogRowCount());
-    assertEquals(1, summary.errorCount());
-    assertEquals(1, summary.coverageRecordCount());
+    assertEquals(org.zhejianglab.astro.atlas.core.LayerState.FAILED, index.layers().get(0).state());
+    assertTrue(Files.readString(tempDir.resolve("evidence-catalog-layer/summary.json")).contains("\"catalogRowCount\":3"));
+    assertTrue(Files.readString(tempDir.resolve("evidence-catalog-layer/summary.json")).contains("\"invalidCatalogRowCount\":1"));
   }
 
   @Test
@@ -137,6 +137,35 @@ class LocalScanTest {
   }
 
   @Test
+  void marksAValidPartialScanAsFailedAndHidesItsCoverage() throws Exception {
+    writeFits(tempDir.resolve("valid.fits"));
+    Files.writeString(tempDir.resolve("invalid.fits"),
+        card("SIMPLE  =                    T") + card("NAXIS   =                    2") + card("END"),
+        StandardCharsets.US_ASCII);
+    InMemoryIndex index = new InMemoryIndex();
+
+    assertThrows(IllegalStateException.class,
+        () -> new ScanService(new LocalSourceAdapter(), index).scan(fitsPlan(tempDir)));
+    assertEquals(org.zhejianglab.astro.atlas.core.LayerState.FAILED, index.layers().get(0).state());
+    assertEquals(1, index.coverages().size(), "partial edges may remain physically present");
+    assertEquals(0, index.searchCoverage(new org.zhejianglab.astro.atlas.core.CoverageLookup(
+        java.util.Set.of("fits-layer"), 8,
+        java.util.Set.of(index.coverages().get(0).healpixCell()), 100, null)).items().size());
+  }
+
+  @Test
+  void rejectsCatalogWithMissingConfiguredColumnsEvenWhenItHasNoRows() throws Exception {
+    Path catalog = tempDir.resolve("missing-columns.csv");
+    Files.writeString(catalog, "object_id,magnitude\n", StandardCharsets.UTF_8);
+    InMemoryIndex index = new InMemoryIndex();
+
+    assertThrows(IllegalStateException.class,
+        () -> new ScanService(new LocalSourceAdapter(), index).scan(catalogPlan(catalog)));
+    assertEquals(org.zhejianglab.astro.atlas.core.LayerState.FAILED, index.layers().get(0).state());
+    assertEquals(1, index.layers().get(0).errorCount());
+  }
+
+  @Test
   void marksAZeroCoverageScanWithExtractionErrorsAsFailed() throws Exception {
     Path fits = tempDir.resolve("missing-spatial-header.fits");
     String[] cards = {
@@ -151,6 +180,53 @@ class LocalScanTest {
     assertEquals(org.zhejianglab.astro.atlas.core.LayerState.FAILED, index.layers().get(0).state());
     assertEquals(0, index.coverages().size());
     assertEquals(1, index.layers().get(0).errorCount());
+  }
+
+  @Test
+  void writesFailedEvidenceWhenEnumerationFailsBeforeTheFirstItem() throws Exception {
+    InMemoryIndex index = new InMemoryIndex();
+    SourceAdapter source = new SourceAdapter() {
+      @Override
+      public Stream<org.zhejianglab.astro.atlas.core.InputItem> enumerate(ScanPlan plan) {
+        throw new IllegalStateException("listing failed");
+      }
+
+      @Override
+      public org.zhejianglab.astro.atlas.core.SourceContent open(org.zhejianglab.astro.atlas.core.InputItem item) {
+        throw new UnsupportedOperationException();
+      }
+    };
+
+    assertThrows(IllegalStateException.class, () -> new ScanService(source, index).scan(catalogPlan(tempDir)));
+    Path evidence = tempDir.resolve("evidence-catalog-layer");
+    assertTrue(Files.readString(evidence.resolve("summary.json")).contains("\"phase\":\"FAILED\""));
+    assertTrue(Files.readString(evidence.resolve("summary.json")).contains("\"errorCount\":1"));
+    assertTrue(Files.readString(evidence.resolve("errors.json")).contains("listing failed"));
+    assertTrue(Files.readString(evidence.resolve("normalized-scan.json")).contains("\"phase\":\"FAILED\""));
+  }
+
+  @Test
+  void duplicateRunCannotBypassAnUnexpiredLeaseAndExpiredLeaseCanBeTakenOver() {
+    InMemoryIndex index = new InMemoryIndex();
+    org.zhejianglab.astro.atlas.core.LayerSpec layer =
+        new org.zhejianglab.astro.atlas.core.LayerSpec("lease-layer", "survey", "release", "product",
+            Modality.IMAGE, CoverageRole.FOOTPRINT, null);
+    org.zhejianglab.astro.atlas.core.CoverageLayer first =
+        org.zhejianglab.astro.atlas.core.CoverageLayer.updating(layer, "run-a", Instant.now().plusSeconds(60));
+    assertTrue(index.tryBeginLayerUpdate(first));
+    assertTrue(!index.tryBeginLayerUpdate(
+        org.zhejianglab.astro.atlas.core.CoverageLayer.updating(layer, "run-a", Instant.now().plusSeconds(60))));
+    assertTrue(!index.tryBeginLayerUpdate(
+        org.zhejianglab.astro.atlas.core.CoverageLayer.updating(layer, "run-b", Instant.now().plusSeconds(60))));
+    org.zhejianglab.astro.atlas.core.CoverageLayer renewed = first.renewed(Instant.now().plusSeconds(120));
+    assertTrue(index.renewLayerUpdate("lease-layer", "run-a", renewed.leaseExpiresAt()));
+    assertTrue(index.finishLayerUpdate(renewed.failed("failed", "snapshot", 1)));
+
+    InMemoryIndex takeover = new InMemoryIndex();
+    assertTrue(takeover.tryBeginLayerUpdate(
+        org.zhejianglab.astro.atlas.core.CoverageLayer.updating(layer, "old-run", Instant.now().minusSeconds(1))));
+    assertTrue(takeover.tryBeginLayerUpdate(
+        org.zhejianglab.astro.atlas.core.CoverageLayer.updating(layer, "new-run", Instant.now().plusSeconds(60))));
   }
 
   private ScanPlan catalogPlan(Path root) {
@@ -210,6 +286,7 @@ class LocalScanTest {
         card("NAXIS2  =                  100"),
         card("CTYPE1  =           'RA---TAN'"),
         card("CTYPE2  =          'DEC--TAN'"),
+        card("RADESYS =           'ICRS'"),
         card("CRVAL1  =                180.0"),
         card("CRVAL2  =                 20.0"),
         card("CRPIX1  =                 50.0"),

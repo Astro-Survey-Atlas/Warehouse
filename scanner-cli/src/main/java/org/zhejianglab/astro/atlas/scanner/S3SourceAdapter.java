@@ -1,10 +1,17 @@
 package org.zhejianglab.astro.atlas.scanner;
 
 import java.net.URI;
-import java.util.ArrayList;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Spliterator;
+import java.util.Spliterators;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 import org.zhejianglab.astro.atlas.core.CredentialResolver;
 import org.zhejianglab.astro.atlas.core.FileType;
 import org.zhejianglab.astro.atlas.core.InputItem;
@@ -22,13 +29,15 @@ import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 import software.amazon.awssdk.services.s3.model.S3Object;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 /** S3-compatible listing and content access for S3 and Alibaba OSS. */
 public final class S3SourceAdapter implements SourceAdapter {
+  private static final long FITS_HEADER_RANGE_END = 2880L * 256L - 1L;
   private final S3Client client;
   private final SourceType sourceType;
 
-  private S3SourceAdapter(S3Client client, SourceType sourceType) {
+  S3SourceAdapter(S3Client client, SourceType sourceType) {
     this.client = client;
     this.sourceType = sourceType;
   }
@@ -54,24 +63,11 @@ public final class S3SourceAdapter implements SourceAdapter {
   }
 
   @Override
-  public List<InputItem> enumerate(ScanPlan plan) {
+  public Stream<InputItem> enumerate(ScanPlan plan) {
     String bucket = plan.source().location().bucket();
     String prefix = plan.source().location().prefix();
-    List<InputItem> items = new ArrayList<>();
-    String token = null;
-    do {
-      ListObjectsV2Request.Builder request = ListObjectsV2Request.builder().bucket(bucket);
-      if (prefix != null && !prefix.isBlank()) request.prefix(prefix);
-      if (token != null) request.continuationToken(token);
-      ListObjectsV2Response response = client.listObjectsV2(request.build());
-      for (S3Object object : response.contents()) {
-        String key = object.key();
-        if (!isSupported(key, plan) || isExcluded(key, plan)) continue;
-        items.add(toInputItem(bucket, key, object.size(), object.lastModified()));
-      }
-      token = response.isTruncated() ? response.nextContinuationToken() : null;
-    } while (token != null && !token.isBlank());
-    return items.stream().sorted(java.util.Comparator.comparing(InputItem::sourceUri)).toList();
+    Iterator<InputItem> iterator = new ListingIterator(plan, bucket, prefix);
+    return StreamSupport.stream(Spliterators.spliteratorUnknownSize(iterator, Spliterator.ORDERED), false);
   }
 
   @Override
@@ -79,11 +75,7 @@ public final class S3SourceAdapter implements SourceAdapter {
     URI uri = URI.create(item.sourceUri());
     String bucket = uri.getHost();
     String key = uri.getPath().startsWith("/") ? uri.getPath().substring(1) : uri.getPath();
-    return () -> {
-      ResponseInputStream<GetObjectResponse> response = client.getObject(
-          GetObjectRequest.builder().bucket(bucket).key(key).build());
-      return response;
-    };
+    return () -> openContent(item, bucket, key);
   }
 
   public void close() {
@@ -97,6 +89,86 @@ public final class S3SourceAdapter implements SourceAdapter {
     String fileName = slash < 0 ? key : key.substring(slash + 1);
     String parentUri = scheme + "://" + bucket + (slash < 0 ? "/" : "/" + key.substring(0, slash));
     return new InputItem(sourceUri, fileName, parentUri, FileType.fromFileName(fileName), size, lastModified);
+  }
+
+  private InputStream openContent(InputItem item, String bucket, String key) throws IOException {
+    GetObjectRequest full = GetObjectRequest.builder().bucket(bucket).key(key).build();
+    if (item.fileType() != FileType.FITS) return client.getObject(full);
+
+    GetObjectRequest range = GetObjectRequest.builder().bucket(bucket).key(key)
+        .range("bytes=0-" + FITS_HEADER_RANGE_END).build();
+    try {
+      ResponseInputStream<GetObjectResponse> response = client.getObject(range);
+      if (hasHonoredRange(response.response())) return response;
+      response.close();
+    } catch (S3Exception exception) {
+      if (!rangeUnsupported(exception)) throw exception;
+    }
+    return client.getObject(full);
+  }
+
+  private static boolean hasHonoredRange(GetObjectResponse response) {
+    String contentRange = response.contentRange();
+    return contentRange != null && contentRange.toLowerCase(Locale.ROOT).startsWith("bytes 0-");
+  }
+
+  private static boolean rangeUnsupported(S3Exception exception) {
+    int status = exception.statusCode();
+    return status == 400 || status == 416 || status == 501;
+  }
+
+  private final class ListingIterator implements Iterator<InputItem> {
+    private final ScanPlan plan;
+    private final String bucket;
+    private final String prefix;
+    private Iterator<S3Object> page = List.<S3Object>of().iterator();
+    private String continuationToken;
+    private boolean lastPage;
+    private InputItem next;
+
+    private ListingIterator(ScanPlan plan, String bucket, String prefix) {
+      this.plan = plan;
+      this.bucket = bucket;
+      this.prefix = prefix;
+    }
+
+    @Override
+    public boolean hasNext() {
+      advance();
+      return next != null;
+    }
+
+    @Override
+    public InputItem next() {
+      advance();
+      if (next == null) throw new NoSuchElementException();
+      InputItem value = next;
+      next = null;
+      return value;
+    }
+
+    private void advance() {
+      if (next != null) return;
+      while (true) {
+        while (page.hasNext()) {
+          S3Object object = page.next();
+          String key = object.key();
+          if (isSupported(key, plan) && !isExcluded(key, plan)) {
+            next = toInputItem(bucket, key, object.size(), object.lastModified());
+            return;
+          }
+        }
+        if (lastPage) return;
+        ListObjectsV2Request.Builder request = ListObjectsV2Request.builder().bucket(bucket);
+        if (prefix != null && !prefix.isBlank()) request.prefix(prefix);
+        if (continuationToken != null && !continuationToken.isBlank()) request.continuationToken(continuationToken);
+        ListObjectsV2Response response = client.listObjectsV2(request.build());
+        page = response.contents().iterator();
+        lastPage = !response.isTruncated() || response.nextContinuationToken() == null
+            || response.nextContinuationToken().isBlank();
+        continuationToken = response.nextContinuationToken();
+      }
+    }
   }
 
   private static boolean isSupported(String key, ScanPlan plan) {

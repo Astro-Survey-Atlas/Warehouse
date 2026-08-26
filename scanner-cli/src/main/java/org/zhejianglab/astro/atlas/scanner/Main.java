@@ -19,23 +19,24 @@ public final class Main {
     if (args.length == 3 && !memory) throw new IllegalArgumentException("unknown option: " + args[2]);
     ScanPlan plan = new ScanPlanLoader().load(Path.of(args[1]));
     ScanPlanValidator.validate(plan, memory);
-    SourceAdapter source = switch (plan.source().connector().type()) {
+    try (SourceAdapter source = switch (plan.source().connector().type()) {
       case LOCAL -> new LocalSourceAdapter();
       case S3, OSS -> S3SourceAdapter.fromPlan(plan);
-    };
-    if (memory) {
-      InMemoryIndex index = new InMemoryIndex();
-      printSummary(new ScanService(source, index).scan(plan, true));
-      System.out.println("layers=" + index.layers().stream().map(layer -> layer.layerId() + ":" + layer.state()).toList());
-      System.out.println("coverageCells=" + index.coverages().stream()
-          .map(coverage -> coverage.healpixOrder() + "/" + coverage.healpixCell())
-          .distinct().sorted().collect(java.util.stream.Collectors.joining(",")));
-      return;
-    }
-    Map<String, String> credentials = CredentialResolver.resolve(plan.sink().connector().credentialRef());
-    try (ElasticsearchAdapter writer = new ElasticsearchAdapter(
-        plan.sink().connector().endpoint(), credentials.get("username"), credentials.get("password"))) {
-      printSummary(new ScanService(source, writer).scan(plan));
+    }) {
+      if (memory) {
+        InMemoryIndex index = new InMemoryIndex();
+        printSummary(new ScanService(source, index).scan(plan, true));
+        System.out.println("layers=" + index.layers().stream().map(layer -> layer.layerId() + ":" + layer.state()).toList());
+        System.out.println("coverageCells=" + index.coverages().stream()
+            .map(coverage -> coverage.healpixOrder() + "/" + coverage.healpixCell())
+            .distinct().sorted().collect(java.util.stream.Collectors.joining(",")));
+        return;
+      }
+      Map<String, String> credentials = CredentialResolver.resolve(plan.sink().connector().credentialRef());
+      try (ElasticsearchAdapter writer = new ElasticsearchAdapter(
+          plan.sink().connector().endpoint(), credentials.get("username"), credentials.get("password"))) {
+        printSummary(new ScanService(source, writer).scan(plan));
+      }
     }
   }
 

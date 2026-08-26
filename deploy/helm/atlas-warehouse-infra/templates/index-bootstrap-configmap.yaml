@@ -1,0 +1,15 @@
+{{- if .Values.indexBootstrap.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "atlas-warehouse-infra.fullname" . }}-index-mappings
+  labels:
+    {{- include "atlas-warehouse-infra.labels" . | nindent 4 }}
+data:
+  layer.json: |
+    {"index_patterns":["ast_layer_index_v1"],"priority":100,"template":{"mappings":{"dynamic":"strict","properties":{"layer_id":{"type":"keyword","ignore_above":2048},"survey_id":{"type":"keyword","ignore_above":2048},"release_id":{"type":"keyword","ignore_above":2048},"product_id":{"type":"keyword","ignore_above":2048},"modality":{"type":"keyword","ignore_above":2048},"coverage_role":{"type":"keyword","ignore_above":2048},"entrypoint":{"type":"keyword","ignore_above":2048},"state":{"type":"keyword","ignore_above":2048},"scan_run_id":{"type":"keyword","ignore_above":2048},"lease_expires_at":{"type":"date"},"source_snapshot_sha256":{"type":"keyword","ignore_above":2048},"available_orders":{"type":"integer"},"file_count":{"type":"long"},"coverage_count":{"type":"long"},"error_count":{"type":"integer"},"error_summary":{"type":"keyword","ignore_above":2048},"updated_at":{"type":"date"}}}}}
+  file.json: |
+    {"index_patterns":["ast_file_index_v1"],"priority":100,"template":{"mappings":{"dynamic":"strict","properties":{"file_id":{"type":"keyword","ignore_above":2048},"source_uri":{"type":"keyword","ignore_above":2048},"file_name":{"type":"keyword","ignore_above":2048},"parent_uri":{"type":"keyword","ignore_above":2048},"file_type":{"type":"keyword","ignore_above":2048},"size_bytes":{"type":"long"},"last_modified":{"type":"date"},"indexed_at":{"type":"date"}}}}}
+  coverage.json: |
+    {"index_patterns":["ast_coverage_index_v1"],"priority":100,"template":{"mappings":{"dynamic":"strict","properties":{"layer_id":{"type":"keyword","ignore_above":2048},"source_file_id":{"type":"keyword","ignore_above":2048},"source_uri":{"type":"keyword","ignore_above":2048},"healpix_order":{"type":"integer"},"healpix_cell":{"type":"long"},"coordinate_frame":{"type":"keyword","ignore_above":2048},"nesting":{"type":"keyword","ignore_above":2048},"coverage_method":{"type":"keyword","ignore_above":2048},"coverage_role":{"type":"keyword","ignore_above":2048},"modality":{"type":"keyword","ignore_above":2048},"precision":{"type":"keyword","ignore_above":2048},"source_order":{"type":"integer"}}}}}
+{{- end }}

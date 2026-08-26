@@ -2,7 +2,7 @@ apiVersion: atlas.zhejianglab.org/v1alpha1
 kind: ScanRequest
 metadata:
   name: csst-w1-oss-demo
-  namespace: warehouse
+  namespace: atlas-warehouse
 spec:
   scanner:
     image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.2.0-20260825-fix3
@@ -26,7 +26,7 @@ spec:
       secretKeyKey: secretKey
   plan:
     version: 2
-    scanRunId: csst-w1-oss-smoke-rerun2-20260825
+    scanRunId: csst-w1-oss-smoke-newinfra-20260826
     layer:
       layerId: csst-sim-w1-image-extent
       surveyId: csst
@@ -56,7 +56,7 @@ spec:
     sink:
       connector:
         type: elasticsearch
-        endpoint: http://warehouse-elasticsearch.warehouse.svc.cluster.local:9200
+        endpoint: http://atlas-warehouse-elasticsearch.atlas-warehouse.svc.cluster.local:9200
         credentialRef: {}
     evidence:
-      outputPath: /var/lib/atlas-evidence/csst-w1-oss-smoke-rerun2-20260825
+      outputPath: /var/lib/atlas-evidence/csst-w1-oss-smoke-newinfra-20260826

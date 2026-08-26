@@ -26,9 +26,28 @@ public final class InMemoryIndex implements IndexWriter, IndexReader {
   public synchronized boolean tryBeginLayerUpdate(CoverageLayer updatingLayer) {
     CoverageLayer current = layers.get(updatingLayer.layerId());
     if (current != null && current.state() == LayerState.UPDATING
-        && current.leaseExpiresAt() != null && current.leaseExpiresAt().isAfter(Instant.now())
-        && !current.scanRunId().equals(updatingLayer.scanRunId())) return false;
+        && current.leaseExpiresAt() != null && current.leaseExpiresAt().isAfter(Instant.now())) return false;
     layers.put(updatingLayer.layerId(), updatingLayer);
+    return true;
+  }
+
+  @Override
+  public synchronized boolean renewLayerUpdate(String layerId, String scanRunId, Instant leaseExpiresAt) {
+    CoverageLayer current = layers.get(layerId);
+    if (current == null || current.state() != LayerState.UPDATING
+        || !current.scanRunId().equals(scanRunId)
+        || current.leaseExpiresAt() == null || !current.leaseExpiresAt().isAfter(Instant.now())) return false;
+    layers.put(layerId, current.renewed(leaseExpiresAt));
+    return true;
+  }
+
+  @Override
+  public synchronized boolean finishLayerUpdate(CoverageLayer terminalLayer) {
+    CoverageLayer current = layers.get(terminalLayer.layerId());
+    if (current == null || current.state() != LayerState.UPDATING
+        || !current.scanRunId().equals(terminalLayer.scanRunId())) return false;
+    if (current.leaseExpiresAt() == null || !current.leaseExpiresAt().isAfter(Instant.now())) return false;
+    layers.put(terminalLayer.layerId(), terminalLayer);
     return true;
   }
 

@@ -1,0 +1,111 @@
+# This chart owns its component names and storage. It has no dependency on the
+# legacy `warehouse` Helm release or on the legacy astro_* indices.
+global:
+  storageClass: ""
+
+elasticsearch:
+  fullnameOverride: atlas-warehouse-elasticsearch
+  global:
+    kibanaEnabled: false
+  security:
+    enabled: false
+  master:
+    replicaCount: 1
+    masterOnly: false
+    heapSize: 512m
+    persistence:
+      enabled: true
+      size: 20Gi
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        cpu: "1"
+        memory: 2Gi
+    networkPolicy:
+      enabled: false
+  data:
+    replicaCount: 0
+  coordinating:
+    replicaCount: 0
+  ingest:
+    replicaCount: 0
+  sysctlImage:
+    enabled: false
+  volumePermissions:
+    enabled: false
+  service:
+    type: ClusterIP
+    ports:
+      restAPI: 9200
+
+minio:
+  fullnameOverride: atlas-warehouse-minio
+  mode: standalone
+  auth:
+    # Create this namespace-local Secret before install. It must contain
+    # root-user and root-password. No credential value belongs in this repo.
+    existingSecret: atlas-warehouse-minio-credentials
+  defaultBuckets: astro-artifacts
+  persistence:
+    enabled: true
+    size: 50Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  networkPolicy:
+    enabled: false
+  volumePermissions:
+    enabled: false
+  service:
+    type: ClusterIP
+    ports:
+      api: 9000
+      console: 9001
+
+kafka:
+  fullnameOverride: atlas-warehouse-kafka
+  kraft:
+    enabled: true
+  zookeeper:
+    enabled: false
+  listeners:
+    client:
+      protocol: PLAINTEXT
+    controller:
+      protocol: PLAINTEXT
+    interbroker:
+      protocol: PLAINTEXT
+  controller:
+    replicaCount: 1
+    controllerOnly: false
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    networkPolicy:
+      enabled: false
+  broker:
+    replicaCount: 0
+  provisioning:
+    enabled: false
+
+indexBootstrap:
+  enabled: true
+  image:
+    repository: curlimages/curl
+    tag: 8.10.1
+    pullPolicy: IfNotPresent
+  backoffLimit: 12
+  esEndpoint: http://atlas-warehouse-elasticsearch:9200

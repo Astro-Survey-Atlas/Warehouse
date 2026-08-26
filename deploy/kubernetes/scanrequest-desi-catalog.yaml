@@ -2,7 +2,7 @@ apiVersion: atlas.zhejianglab.org/v1alpha1
 kind: ScanRequest
 metadata:
   name: desi-catalog-demo
-  namespace: warehouse
+  namespace: atlas-warehouse
 spec:
   scanner:
     image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.2.0-20260825-fix2
@@ -38,7 +38,7 @@ spec:
     source:
       connector:
         type: s3
-        endpoint: http://warehouse-minio.warehouse.svc.cluster.local:9000
+        endpoint: http://atlas-warehouse-minio.atlas-warehouse.svc.cluster.local:9000
         region: us-east-1
         credentialRef:
           accessKeyEnv: ATLAS_SOURCE_ACCESS_KEY
@@ -58,7 +58,7 @@ spec:
     sink:
       connector:
         type: elasticsearch
-        endpoint: http://warehouse-elasticsearch.warehouse.svc.cluster.local:9200
+        endpoint: http://atlas-warehouse-elasticsearch.atlas-warehouse.svc.cluster.local:9200
         credentialRef: {}
     evidence:
-      outputPath: /var/lib/atlas-evidence/desi-catalog-demo-20260825
+      outputPath: /var/lib/atlas-evidence/desi-catalog-demo-newinfra-20260826

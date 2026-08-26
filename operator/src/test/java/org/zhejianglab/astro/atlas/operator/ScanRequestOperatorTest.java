@@ -5,6 +5,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ScanRequestOperatorTest {
@@ -15,5 +16,15 @@ class ScanRequestOperatorTest {
 
     assertTrue(ScanRequestOperator.terminalForJob(resource, "scan-job-a"));
     assertFalse(ScanRequestOperator.terminalForJob(resource, "scan-job-b"));
+  }
+
+  @Test
+  void aCompletedJobWithoutMatchingSummaryCannotBeReportedAsSuccess() {
+    var validation = ScannerSummaryParser.validateSuccessfulRun(Map.of(
+        "phase", "COMPLETED", "scanRunId", "other-run", "layerId", "local-layer", "errorCount", 0,
+        "sourceSnapshotSha256", "snapshot"), "local-run-20260825", "local-layer");
+
+    assertFalse(validation.valid());
+    assertEquals("ScannerSummaryIdentityMismatch", validation.reason());
   }
 }

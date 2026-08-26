@@ -44,6 +44,14 @@ public record CoverageLayer(
     return from(spec(), LayerState.ACTIVE, scanRunId, null, snapshotSha256, orders, files, coverages, errors, null);
   }
 
+  /** Returns the same owned refresh with a newly extended lease. */
+  public CoverageLayer renewed(Instant nextLeaseExpiresAt) {
+    if (state != LayerState.UPDATING) throw new IllegalStateException("only updating layers may renew a lease");
+    return new CoverageLayer(layerId, surveyId, releaseId, productId, modality, coverageRole, entrypoint,
+        state, scanRunId, nextLeaseExpiresAt, sourceSnapshotSha256, availableOrders, fileCount,
+        coverageCount, errorCount, errorSummary, Instant.now());
+  }
+
   public CoverageLayer failed(String summary, String snapshotSha256, int errors) {
     return from(spec(), LayerState.FAILED, scanRunId, null, snapshotSha256, List.of(), 0, 0, errors, summary);
   }

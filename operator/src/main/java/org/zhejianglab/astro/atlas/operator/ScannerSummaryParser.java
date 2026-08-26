@@ -30,6 +30,23 @@ public final class ScannerSummaryParser {
     return Map.of();
   }
 
+  static Validation validateSuccessfulRun(Map<String, Object> summary, String scanRunId, String layerId) {
+    if (summary == null || summary.isEmpty()) return new Validation(false, "ScannerSummaryMissing");
+    if (!"COMPLETED".equals(summary.get("phase"))) return new Validation(false, "ScannerSummaryPhaseMismatch");
+    if (!scanRunId.equals(summary.get("scanRunId")) || !layerId.equals(summary.get("layerId"))) {
+      return new Validation(false, "ScannerSummaryIdentityMismatch");
+    }
+    Object errors = summary.get("errorCount");
+    if (!(errors instanceof Number number) || number.intValue() != 0) {
+      return new Validation(false, "ScannerSummaryReportsErrors");
+    }
+    Object snapshot = summary.get("sourceSnapshotSha256");
+    if (!(snapshot instanceof String) || ((String) snapshot).isBlank()) {
+      return new Validation(false, "ScannerSummarySnapshotMissing");
+    }
+    return new Validation(true, null);
+  }
+
   private static Map<String, Object> parseCurrent(Matcher matcher) {
       Map<String, Object> result = new LinkedHashMap<>();
       result.put("phase", matcher.group(1));
@@ -73,4 +90,6 @@ public final class ScannerSummaryParser {
     for (String item : text.split(",")) result.add(Integer.parseInt(item.trim()));
     return List.copyOf(result);
   }
+
+  record Validation(boolean valid, String reason) {}
 }

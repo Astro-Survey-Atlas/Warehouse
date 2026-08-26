@@ -10,6 +10,8 @@ public final class OperatorConstants {
   public static final String OPERATOR_NAME = "astro-atlas-operator";
   public static final String REQUEST_LABEL = "atlas.zhejianglab.org/scan-request";
   public static final String LAYER_LABEL = "atlas.zhejianglab.org/layer";
+  public static final String JOB_LABEL = "job-name";
+  public static final String TRACKING_LABEL_PREFIX = "atlas.zhejianglab.org/track-";
   public static final String PLAN_HASH_ANNOTATION = "atlas.zhejianglab.org/plan-sha256";
   public static final String PLAN_PATH = "/etc/atlas/scan/plan.json";
 

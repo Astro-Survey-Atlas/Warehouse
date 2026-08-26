@@ -45,7 +45,10 @@ public final class CatalogHandler implements CoverageExtractor {
     ExtractionMode mode = context.plan().extraction().mode();
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(context.content().open(), StandardCharsets.UTF_8))) {
       String headerLine = readRecord(reader, delimiter);
-      if (headerLine == null) return;
+      if (headerLine == null) {
+        context.addError("catalog header is missing");
+        return;
+      }
       List<String> headers = whitespaceCatalog ? parseWhitespace(headerLine) : parse(headerLine, delimiter);
       if (whitespaceCatalog && !headers.isEmpty() && "#".equals(headers.get(0))) {
         headers = headers.subList(1, headers.size());
@@ -57,16 +60,18 @@ public final class CatalogHandler implements CoverageExtractor {
       Integer decColumn = healpixMode ? null : first(columns, spec.decColumn(), DEC_ALIASES);
       Integer pixelColumn = coordinateMode ? null : first(columns, spec.healpixColumn(), PIXEL_ALIASES);
       Integer orderColumn = coordinateMode ? null : first(columns, spec.healpixOrderColumn(), ORDER_ALIASES);
-      if (spec.raColumn() != null && (raColumn == null || decColumn == null)) {
+      if (coordinateMode && (raColumn == null || decColumn == null)) {
         context.addError("configured catalog RA/Dec columns were not found");
         return;
       }
-      if (spec.healpixColumn() != null && pixelColumn == null) {
+      if (healpixMode && pixelColumn == null) {
         context.addError("configured catalog HEALPix column was not found");
         return;
       }
-      if (coordinateMode && (raColumn == null || decColumn == null)) return;
-      if (healpixMode && pixelColumn == null) return;
+      if (healpixMode && orderColumn == null && spec.healpixOrder() == null) {
+        context.addError("catalog HEALPix order column or fixed order was not found");
+        return;
+      }
 
       String line;
       while ((line = readRecord(reader, delimiter)) != null) {

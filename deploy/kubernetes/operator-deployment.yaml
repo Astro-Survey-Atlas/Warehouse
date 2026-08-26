@@ -29,7 +29,7 @@ spec:
           imagePullPolicy: IfNotPresent
           env:
             - name: WATCH_NAMESPACE
-              value: ""
+              value: atlas-warehouse
             - name: SCANNER_IMAGE
               value: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.2.0-20260825-fix3
             - name: RECONCILE_INTERVAL_SECONDS

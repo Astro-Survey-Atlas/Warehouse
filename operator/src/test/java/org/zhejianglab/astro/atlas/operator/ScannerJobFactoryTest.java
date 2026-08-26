@@ -15,6 +15,9 @@ class ScannerJobFactoryTest {
   @Test
   void createsDeterministicJobAndPlanConfigMapWithOwnerReference() {
     GenericKubernetesResource request = OperatorTestFixtures.request("nightly-scan");
+    request.getMetadata().setLabels(Map.of(
+        OperatorConstants.TRACKING_LABEL_PREFIX + "caller", "assets",
+        "untrusted.example/owner", "ignored"));
     var mapper = new ObjectMapper().registerModule(new JavaTimeModule());
     var plan = new PlanMaterializer(mapper).render(
         OperatorTestFixtures.localPlan(null), CredentialsSpec.empty());
@@ -36,6 +39,12 @@ class ScannerJobFactoryTest {
         .getPersistentVolumeClaim().getClaimName());
     assertEquals("uid-1", job.getMetadata().getOwnerReferences().get(0).getUid());
     assertTrue(job.getMetadata().getAnnotations().containsKey(OperatorConstants.PLAN_HASH_ANNOTATION));
+    assertEquals("assets", job.getMetadata().getLabels().get(OperatorConstants.TRACKING_LABEL_PREFIX + "caller"));
+    assertEquals("assets", job.getSpec().getTemplate().getMetadata().getLabels()
+        .get(OperatorConstants.TRACKING_LABEL_PREFIX + "caller"));
+    assertEquals(OperatorConstants.OPERATOR_NAME,
+        job.getMetadata().getLabels().get(OperatorConstants.MANAGED_BY_LABEL));
+    assertTrue(!job.getMetadata().getLabels().containsKey("untrusted.example/owner"));
     assertEquals(Map.of("plan.json", plan.json()),
         factory.planConfigMap(request, "atlas", configMapName, jobName, plan).getData());
   }

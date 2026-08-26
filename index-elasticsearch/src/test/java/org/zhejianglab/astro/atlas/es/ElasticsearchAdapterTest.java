@@ -94,14 +94,46 @@ class ElasticsearchAdapterTest {
     server.createContext("/", exchange -> {
       String source = "{\"layer_id\":\"image-layer\",\"state\":\"UPDATING\",\"scan_run_id\":\""
           + runId + "\",\"lease_expires_at\":\"" + lease.get() + "\"}";
-      respond(exchange, "{\"found\":true,\"_source\":" + source + "}");
+      if (exchange.getRequestMethod().equals("PUT")) {
+        respond(exchange, "{\"result\":\"updated\"}");
+        return;
+      }
+      respond(exchange, "{\"found\":true,\"_seq_no\":1,\"_primary_term\":1,\"_source\":" + source + "}");
     });
     server.start();
     try (ElasticsearchAdapter adapter = adapter(server)) {
       CoverageLayer candidate = CoverageLayer.updating(layerSpec("image-layer"), "new-run", Instant.now().plusSeconds(60));
       assertTrue(!adapter.tryBeginLayerUpdate(candidate));
+      assertTrue(!adapter.tryBeginLayerUpdate(
+          CoverageLayer.updating(layerSpec("image-layer"), runId, Instant.now().plusSeconds(60))));
       lease.set("2000-01-01T00:00:00Z");
       assertTrue(adapter.tryBeginLayerUpdate(candidate));
+    } finally {
+      server.stop(0);
+    }
+  }
+
+  @Test
+  void renewsBeforeExpiryAndRefusesTerminalWriteAfterExpiry() throws Exception {
+    AtomicReference<String> lease = new AtomicReference<>("2099-01-01T00:00:00Z");
+    HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext("/", exchange -> {
+      String source = layerJson(CoverageLayer.updating(layerSpec("image-layer"), "run-1",
+          Instant.parse(lease.get())));
+      if (exchange.getRequestMethod().equals("PUT")) {
+        respond(exchange, "{\"result\":\"updated\"}");
+        return;
+      }
+      respond(exchange, "{\"found\":true,\"_seq_no\":1,\"_primary_term\":1,\"_source\":" + source + "}");
+    });
+    server.start();
+    try (ElasticsearchAdapter adapter = adapter(server)) {
+      assertTrue(adapter.renewLayerUpdate("image-layer", "run-1", Instant.now().plusSeconds(120)));
+      CoverageLayer terminal = CoverageLayer.updating(layerSpec("image-layer"), "run-1",
+          Instant.now().plusSeconds(60)).active("snapshot", List.of(8), 1, 1, 0);
+      assertTrue(adapter.finishLayerUpdate(terminal));
+      lease.set("2000-01-01T00:00:00Z");
+      assertTrue(!adapter.finishLayerUpdate(terminal));
     } finally {
       server.stop(0);
     }

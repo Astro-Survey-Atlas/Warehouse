@@ -71,16 +71,49 @@ public final class ElasticsearchAdapter implements IndexWriter, IndexReader, Aut
     }
     JsonNode source = root.path("_source");
     if ("UPDATING".equalsIgnoreCase(source.path("state").asText())) {
-      String run = source.path("scan_run_id").asText();
       String expiry = optionalText(source, "lease_expires_at");
-      if (run.equals(updatingLayer.scanRunId())) return true;
-      if (expiry != null && Instant.parse(expiry).isAfter(Instant.now())) return false;
+      if (expiry == null || !expired(expiry)) return false;
     }
     JsonNode sequence = root.path("_seq_no");
     JsonNode primaryTerm = root.path("_primary_term");
-    if (!sequence.isNumber() || !primaryTerm.isNumber()) return true;
+    if (!sequence.isNumber() || !primaryTerm.isNumber()) return false;
     return conditionalWrite("PUT", documentPath + "?if_seq_no=" + sequence.asLong()
         + "&if_primary_term=" + primaryTerm.asLong(), updatingLayer.toDocument());
+  }
+
+  @Override
+  public boolean renewLayerUpdate(String layerId, String scanRunId, Instant leaseExpiresAt) {
+    JsonNode root = getOptional("/" + IndexContract.LAYER_INDEX + "/_doc/" + layerId);
+    if (root == null || !root.path("found").asBoolean()) return false;
+    JsonNode source = root.path("_source");
+    if (!"UPDATING".equalsIgnoreCase(source.path("state").asText())
+        || !scanRunId.equals(source.path("scan_run_id").asText())) return false;
+    String currentExpiry = optionalText(source, "lease_expires_at");
+    if (currentExpiry == null || expired(currentExpiry)) return false;
+    JsonNode sequence = root.path("_seq_no");
+    JsonNode primaryTerm = root.path("_primary_term");
+    if (!sequence.isNumber() || !primaryTerm.isNumber()) return false;
+    CoverageLayer current = readLayer(source);
+    CoverageLayer renewed = current.renewed(leaseExpiresAt);
+    return conditionalWrite("PUT", "/" + IndexContract.LAYER_INDEX + "/_doc/" + layerId
+        + "?if_seq_no=" + sequence.asLong() + "&if_primary_term=" + primaryTerm.asLong(), renewed.toDocument());
+  }
+
+  @Override
+  public boolean finishLayerUpdate(CoverageLayer terminalLayer) {
+    String documentPath = "/" + IndexContract.LAYER_INDEX + "/_doc/" + terminalLayer.layerId();
+    JsonNode root = getOptional(documentPath);
+    if (root == null || !root.path("found").asBoolean()) return false;
+    JsonNode source = root.path("_source");
+    if (!"UPDATING".equalsIgnoreCase(source.path("state").asText())
+        || !terminalLayer.scanRunId().equals(source.path("scan_run_id").asText())) return false;
+    String currentExpiry = optionalText(source, "lease_expires_at");
+    if (currentExpiry == null || expired(currentExpiry)) return false;
+    JsonNode sequence = root.path("_seq_no");
+    JsonNode primaryTerm = root.path("_primary_term");
+    if (!sequence.isNumber() || !primaryTerm.isNumber()) return false;
+    return conditionalWrite("PUT", documentPath + "?if_seq_no=" + sequence.asLong()
+        + "&if_primary_term=" + primaryTerm.asLong(), terminalLayer.toDocument());
   }
 
   @Override
@@ -359,6 +392,15 @@ public final class ElasticsearchAdapter implements IndexWriter, IndexReader, Aut
   private static Instant optionalInstant(JsonNode source, String field) {
     String value = optionalText(source, field);
     return value == null ? null : Instant.parse(value);
+  }
+
+  private static boolean expired(String value) {
+    try {
+      return !Instant.parse(value).isAfter(Instant.now());
+    } catch (RuntimeException exception) {
+      // A malformed lease is not safe to take over.
+      return false;
+    }
   }
 
   private static String ndjson(List<BulkOperation> operations) { StringBuilder value = new StringBuilder(); operations.forEach(operation -> value.append(operation.ndjson())); return value.toString(); }

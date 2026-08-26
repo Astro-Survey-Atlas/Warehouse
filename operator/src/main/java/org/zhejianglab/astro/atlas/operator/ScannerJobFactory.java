@@ -122,8 +122,16 @@ public final class ScannerJobFactory {
     Map<String, String> labels = new LinkedHashMap<>();
     labels.put(OperatorConstants.MANAGED_BY_LABEL, OperatorConstants.OPERATOR_NAME);
     labels.put(OperatorConstants.REQUEST_LABEL, KubeNames.dnsLabel(request.getMetadata().getName(), 63));
-    labels.put("job-name", KubeNames.dnsLabel(jobName, 63));
+    labels.put(OperatorConstants.JOB_LABEL, KubeNames.dnsLabel(jobName, 63));
     if (layerId != null && !layerId.isBlank()) labels.put(OperatorConstants.LAYER_LABEL, KubeNames.dnsLabel(layerId, 63));
+    if (request.getMetadata().getLabels() != null) {
+      request.getMetadata().getLabels().forEach((key, value) -> {
+        if (key != null && key.startsWith(OperatorConstants.TRACKING_LABEL_PREFIX)
+            && value != null && !value.isBlank() && !labels.containsKey(key)) {
+          labels.put(key, value);
+        }
+      });
+    }
     return labels;
   }
 

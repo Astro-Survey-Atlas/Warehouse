@@ -1,0 +1,22 @@
+apiVersion: v2
+name: atlas-warehouse-infra
+description: Self-managed Elasticsearch, MinIO, and Kafka for Astro Survey Atlas Warehouse
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - astro-atlas
+  - warehouse
+  - elasticsearch
+  - minio
+  - kafka
+dependencies:
+  - name: elasticsearch
+    version: 19.21.2
+    repository: file://charts/elasticsearch
+  - name: minio
+    version: 13.8.4
+    repository: file://charts/minio
+  - name: kafka
+    version: 29.3.14
+    repository: file://charts/kafka
