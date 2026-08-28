@@ -40,6 +40,18 @@ local filesystem paths.
 - Warehouse never falls back to the legacy `warehouse` release, `astro_*` indices, or the frozen legacy checkout.
 - SourceUnit is not present in any of these v1 contracts.
 
+### MOC Core conformance
+
+`MOC-Core-SDK/fixtures/conformance/healpix-v1.json` is the shared numerical
+fixture for ICRS to NESTED `order/ipix` conversion and the four precision
+labels. Warehouse copies the reviewed fixture into
+`spatial-core/src/test/resources/conformance/healpix-v1.json` and executes every
+vector in its Java test suite. The source commit and fixture digest are recorded
+in [`contracts/conformance/moc-core-source.json`](../contracts/conformance/moc-core-source.json).
+Update the copied fixture only alongside the Core commit recorded in the
+release provenance; a changed vector is a cross-repository contract change and
+must be reviewed by both consumers.
+
 ## End-To-End Workflows
 
 ### User remote scan

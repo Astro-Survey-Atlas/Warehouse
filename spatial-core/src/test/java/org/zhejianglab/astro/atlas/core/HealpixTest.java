@@ -16,9 +16,15 @@ package org.zhejianglab.astro.atlas.core;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.io.InputStream;
 import org.junit.jupiter.api.Test;
 
 class HealpixTest {
+  private static final ObjectMapper JSON = new ObjectMapper();
+
   @Test
   void convertsCoordinatesToAValidOrderEightCell() {
     long cell = Healpix.ang2pixNest(8, 180.25, -2.5);
@@ -37,6 +43,22 @@ class HealpixTest {
     assertEquals(289450L, Healpix.ang2pixNest(8, 1.0e-12, 0.0));
     assertEquals(300373L, Healpix.ang2pixNest(8, -1.0e-12, 0.0));
     assertEquals(311296L, Healpix.ang2pixNest(8, 360.0, 0.0));
+  }
+
+  @Test
+  void consumesTheSharedMocCoreHealpixConformanceFixture() throws IOException {
+    try (InputStream input = HealpixTest.class.getResourceAsStream("/conformance/healpix-v1.json")) {
+      assertTrue(input != null, "MOC Core conformance fixture must be on the test classpath");
+      JsonNode fixture = JSON.readTree(input);
+      assertEquals("ICRS", fixture.path("coordinateFrame").asText());
+      assertEquals("NESTED", fixture.path("ordering").asText());
+      for (JsonNode vector : fixture.path("vectors")) {
+        assertEquals(vector.path("ipix").asLong(), Healpix.ang2pixNest(
+            vector.path("order").asInt(), vector.path("ra").asDouble(), vector.path("dec").asDouble()),
+            "fixture vector " + vector);
+      }
+      assertEquals(4, fixture.path("precision").size());
+    }
   }
 
   @Test

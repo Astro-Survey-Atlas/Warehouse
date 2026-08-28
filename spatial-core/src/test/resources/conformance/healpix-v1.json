@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0.0",
+  "coordinateFrame": "ICRS",
+  "ordering": "NESTED",
+  "vectors": [
+    {"order": 4, "ra": 0.0, "dec": 0.0, "ipix": 1216},
+    {"order": 8, "ra": 0.0, "dec": 0.0, "ipix": 311296},
+    {"order": 10, "ra": 0.0, "dec": 0.0, "ipix": 4980736},
+    {"order": 8, "ra": 1.0e-12, "dec": 0.0, "ipix": 289450},
+    {"order": 8, "ra": -1.0e-12, "dec": 0.0, "ipix": 300373},
+    {"order": 8, "ra": 360.0, "dec": 0.0, "ipix": 311296}
+  ],
+  "precision": ["exact", "estimated", "entrypoint-only", "truncated"]
+}

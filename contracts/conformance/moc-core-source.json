@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/Astro-Survey-Atlas/MOC-Core-SDK",
+  "commit": "2ebc395",
+  "fixture": "fixtures/conformance/healpix-v1.json",
+  "fixtureSha256": "738350fb6cd87724619fe1c6ebe51ffa166aa9c00a74ecae32e18678cff7e46a",
+  "coordinateFrame": "ICRS",
+  "ordering": "NESTED",
+  "consumerResource": "spatial-core/src/test/resources/conformance/healpix-v1.json"
+}
