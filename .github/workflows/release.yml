@@ -59,7 +59,10 @@ jobs:
           name: warehouse-release-artifacts
           path: |
             dist/
-            **/target/*-runner.jar
+            scanner-cli/target/scanner-cli-*-runner.jar
+            operator/target/operator-*-runner.jar
+            moc-discovery-cli/target/moc-discovery-cli-*-runner.jar
+            query-api/target/query-api-*-runner.jar
 
   images:
     needs: artifacts
@@ -90,7 +93,7 @@ jobs:
           set -euo pipefail
           for module in scanner-cli operator moc-discovery-cli; do
             mkdir -p "$module/target"
-            jar="$(find build-artifacts -type f -name "${module}-*-runner.jar" -print -quit)"
+            jar="$(find build-artifacts -type f -name "${module}-*-runner.jar" ! -name "original-*" -print -quit)"
             test -n "$jar"
             cp "$jar" "$module/target/"
           done
@@ -121,4 +124,7 @@ jobs:
           generate_release_notes: true
           files: |
             release/dist/*
-            release/**/target/*-runner.jar
+            release/scanner-cli/target/scanner-cli-*-runner.jar
+            release/operator/target/operator-*-runner.jar
+            release/moc-discovery-cli/target/moc-discovery-cli-*-runner.jar
+            release/query-api/target/query-api-*-runner.jar

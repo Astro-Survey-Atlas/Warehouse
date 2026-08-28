@@ -52,15 +52,17 @@ public final class Main {
       Path parent = output.toAbsolutePath().getParent();
       if (parent != null) Files.createDirectories(parent);
       Files.writeString(output, json);
-      Map<String, Object> summary = new LinkedHashMap<>();
-      summary.put("phase", "COMPLETED");
-      copy(document, summary, "candidateCount");
-      copy(document, summary, "probeCount");
-      copy(document, summary, "bytes");
-      copy(document, summary, "truncated");
-      Object requests = document.get("requests");
-      if (requests instanceof java.util.List<?> list) summary.put("requestCount", list.size());
-      System.out.println("ATLAS_MOC_DISCOVERY_SUMMARY " + mapper.writeValueAsString(summary));
+      if (!planOnly) {
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("phase", "COMPLETED");
+        copy(document, summary, "candidateCount");
+        copy(document, summary, "probeCount");
+        copy(document, summary, "bytes");
+        copy(document, summary, "truncated");
+        Object requests = document.get("requests");
+        if (requests instanceof java.util.List<?> list) summary.put("requestCount", list.size());
+        System.out.println("ATLAS_MOC_DISCOVERY_SUMMARY " + mapper.writeValueAsString(summary));
+      }
     }
   }
 

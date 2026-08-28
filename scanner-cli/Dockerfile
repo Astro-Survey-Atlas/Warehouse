@@ -12,6 +12,6 @@
 FROM eclipse-temurin:17-jre
 
 WORKDIR /app
-COPY target/*-runner.jar /app/scanner-cli.jar
+COPY target/scanner-cli-*-runner.jar /app/scanner-cli.jar
 
 ENTRYPOINT ["java", "-jar", "/app/scanner-cli.jar"]

@@ -11,5 +11,5 @@
 
 FROM eclipse-temurin:17-jre
 WORKDIR /app
-COPY target/*-runner.jar /app/moc-discovery-cli.jar
+COPY target/moc-discovery-cli-*-runner.jar /app/moc-discovery-cli.jar
 ENTRYPOINT ["java", "-jar", "/app/moc-discovery-cli.jar"]

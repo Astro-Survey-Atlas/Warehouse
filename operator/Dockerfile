@@ -12,7 +12,7 @@
 FROM eclipse-temurin:17-jre
 
 WORKDIR /app
-COPY target/*-runner.jar /app/operator.jar
+COPY target/operator-*-runner.jar /app/operator.jar
 
 USER 10001
 ENTRYPOINT ["java", "-jar", "/app/operator.jar"]

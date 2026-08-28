@@ -195,9 +195,11 @@ evidence.
 
 Recovery retry `oss-csst-w1-catalog-full-retry3-20260828` was submitted on
 2026-08-28 with the `shutdownfix1` scanner image and a 24-hour deadline. It is
-currently running in the background; do not modify the Job in place. Recheck
-its Scanner summary, evidence, and final layer state after it reaches a
-terminal phase.
+currently running in the background; do not modify the Job in place. A
+read-only check at 2026-08-28T08:29Z found the generated Job
+`oss-csst-w1-catalog-full-retry3-20260828-scan-6568995b57` and its Pod
+(`1/1 Running`). Recheck its Scanner summary, evidence, and final layer state
+after it reaches a terminal phase.
 
 Assets is deployed separately as Helm release `astro-survey-atlas-assets`
 (revision 83, image `0.1.0-20260827-163611`) in namespace

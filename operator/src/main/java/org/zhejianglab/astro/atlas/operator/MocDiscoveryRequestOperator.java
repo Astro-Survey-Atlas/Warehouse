@@ -92,13 +92,16 @@ public final class MocDiscoveryRequestOperator implements AutoCloseable {
       JsonNode spec = mapper.valueToTree(current.get("spec"));
       String surveyName = spec.path("query").path("surveyName").asText("").trim();
       String policyRef = spec.path("policyRef").asText("").trim();
-      if (surveyName.isBlank() || !"cds-public-moc-v1".equals(policyRef)) { setStatus(resource, Map.of("phase", "INVALID", "reason", "InvalidIntent")); return; }
+      if (surveyName.isBlank() || !"cds-public-moc-v1".equals(policyRef)) {
+        setStatus(resource, current, Map.of("phase", "INVALID", "reason", "InvalidIntent"));
+        return;
+      }
       String jobName = KubeNames.dnsLabel(event.getMetadata().getName() + "-moc-discovery", 63);
       String evidencePath = evidencePath(jobName);
       Job job = client.batch().v1().jobs().inNamespace(namespace).withName(jobName).get();
       if (job == null) {
         client.batch().v1().jobs().inNamespace(namespace).resource(job(event, namespace, jobName, surveyName, spec)).create();
-        setStatus(resource, Map.of("phase", "SUBMITTED", "jobName", jobName, "evidencePath", evidencePath));
+        setStatus(resource, current, Map.of("phase", "SUBMITTED", "jobName", jobName, "evidencePath", evidencePath));
       } else {
         JobStatusMapper.Observation observation = JobStatusMapper.observe(job);
         Map<String, Object> summary = terminal(observation.phase()) ? discoverySummary(namespace, job) : Map.of();
@@ -107,9 +110,12 @@ public final class MocDiscoveryRequestOperator implements AutoCloseable {
         copyCount(status, summary, "candidateCount");
         copyCount(status, summary, "probeCount");
         status.put("evidencePath", evidencePath);
-        setStatus(resource, status);
+        setStatus(resource, current, status);
       }
-    } catch (Exception exception) { setStatus(resource, Map.of("phase", "FAILED", "reason", "ReconcileError", "message", exception.getMessage() == null ? "discovery reconcile failed" : exception.getMessage())); }
+    } catch (Exception exception) {
+      setStatus(resource, current, Map.of("phase", "FAILED", "reason", "ReconcileError",
+          "message", exception.getMessage() == null ? "discovery reconcile failed" : exception.getMessage()));
+    }
   }
 
   Job job(GenericKubernetesResource request, String namespace, String name, String surveyName, JsonNode spec) {
@@ -170,5 +176,22 @@ public final class MocDiscoveryRequestOperator implements AutoCloseable {
   private static String env(String key, String fallback) { String value = System.getenv(key); return value == null || value.isBlank() ? fallback : value; }
   private String evidencePath(String jobName) { return env("MOC_DISCOVERY_EVIDENCE_MOUNT_PATH", "/var/lib/atlas-evidence").replaceAll("/+$", "") + "/moc-discovery/" + jobName + "/execution-plan.json"; }
   private static String generation(GenericKubernetesResource resource) { return resource.getMetadata().getGeneration() == null ? null : Long.toString(resource.getMetadata().getGeneration()); }
-  private static void setStatus(Resource<GenericKubernetesResource> resource, Map<String, Object> status) { resource.editStatus(item -> { item.setAdditionalProperty("status", status); return item; }); }
+  private static void setStatus(Resource<GenericKubernetesResource> resource,
+      GenericKubernetesResource current, Map<String, Object> status) {
+    if (sameStatus(current.get("status"), status)) return;
+    resource.editStatus(item -> {
+      item.setAdditionalProperty("status", status);
+      return item;
+    });
+  }
+
+  private static boolean sameStatus(Object existing, Map<String, Object> desired) {
+    if (!(existing instanceof Map<?, ?> existingMap)) return false;
+    Map<Object, Object> left = new LinkedHashMap<>();
+    existingMap.forEach(left::put);
+    Map<Object, Object> right = new LinkedHashMap<>(desired);
+    left.remove("lastTransitionTime");
+    right.remove("lastTransitionTime");
+    return left.equals(right);
+  }
 }
