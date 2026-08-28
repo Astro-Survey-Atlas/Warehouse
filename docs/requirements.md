@@ -1,3 +1,16 @@
+<!--
+Copyright 2026 Astro Survey Atlas contributors.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 # Product Requirements
 
 ## Goal
@@ -15,7 +28,7 @@ CoverageLayer + source + ExtractionMode
   -> layer/cell reverse lookup
 ```
 
-## Product Requirements
+## Functional Requirements
 
 - A CoverageLayer is one survey, release, and product refreshed as a unit.
 - A FileAsset is one discovered file with a stable canonical-URI-derived ID.
@@ -66,6 +79,13 @@ CoverageLayer + source + ExtractionMode
   directly. Query API is not a required production hop.
 - New indices are `ast_file_index_v1`, `ast_coverage_index_v1`, and
   `ast_layer_index_v1`; every legacy `astro_*` index remains untouched.
+- `ScanRequest` and `MocDiscoveryRequest` are namespaced resources. One Operator
+  may watch multiple namespaces only through an explicit non-empty allowlist;
+  an empty configuration must fail closed rather than watch the whole cluster.
+- Jobs, plan ConfigMaps, evidence volumes, and credential references are created
+  in the request namespace and are owned by the request there.
+- `MocDiscoveryRequest` uses a fixed allowlisted policy, writes evidence only,
+  and never creates a CoverageLayer or `ast_*` document.
 
 ## Controlled Non-Goals
 

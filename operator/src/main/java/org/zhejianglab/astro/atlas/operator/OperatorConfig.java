@@ -1,3 +1,16 @@
+/*
+ * Copyright 2026 Astro Survey Atlas contributors.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.zhejianglab.astro.atlas.operator;
 
 import java.time.Duration;
@@ -17,7 +30,9 @@ public record OperatorConfig(
   }
 
   public OperatorConfig {
-    if (namespace == null) namespace = "";
+    if (namespace == null || namespace.isBlank() || parseNamespaces(namespace).isEmpty()) {
+      throw new IllegalArgumentException("WATCH_NAMESPACES must contain at least one namespace");
+    }
     if (scannerImage == null || scannerImage.isBlank()) {
       throw new IllegalArgumentException("scannerImage must not be blank");
     }
@@ -26,17 +41,15 @@ public record OperatorConfig(
     }
   }
 
-  /**
-   * Returns the namespace scopes configured for this operator.  The legacy
-   * three-argument record keeps its original shape for tests and embedders;
-   * the namespace field now accepts a comma-separated list.  An empty list
-   * means the Fabric8 inAnyNamespace scope.
-   */
   public List<String> namespaces() {
-    if (namespace == null || namespace.isBlank()) return List.of();
-    return Arrays.stream(namespace.split(","))
+    return parseNamespaces(namespace);
+  }
+
+  private static List<String> parseNamespaces(String value) {
+    if (value == null || value.isBlank()) return List.of();
+    return Arrays.stream(value.split(","))
         .map(String::trim)
-        .filter(value -> !value.isBlank())
+        .filter(namespace -> !namespace.isBlank())
         .distinct()
         .toList();
   }

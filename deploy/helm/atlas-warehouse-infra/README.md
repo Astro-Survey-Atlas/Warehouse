@@ -1,57 +1,85 @@
-# Atlas Warehouse Infrastructure
+<!--
+Copyright 2026 Astro Survey Atlas contributors.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
 
-This is the self-managed infrastructure release for the new Warehouse runtime.
-It owns Elasticsearch and MinIO services in a dedicated namespace. Kafka is an
-optional chart dependency and is disabled by default because the current
-Scanner/Operator path writes directly to Elasticsearch and evidence storage.
-The legacy `warehouse` release and its `astro_*` indices are not referenced.
+# Atlas Warehouse Infrastructure Chart
 
-The chart does not deploy Flink or the legacy metadata-ingest operator in the
-default profile. The scanner writes bounded bulk requests directly to the three
-`ast_*` indices. A future Flink/event-driven profile may enable Kafka without
-changing the current ScanPlan contract.
+This chart owns the self-managed Warehouse dependencies in one namespace:
+Elasticsearch, MinIO, and strict bootstrap for
+`ast_layer_index_v1`, `ast_file_index_v1`, and `ast_coverage_index_v1`.
+
+It does not install the Operator, Flink, the legacy metadata operator, or the
+legacy `warehouse` release. Kafka is a chart dependency but is disabled by
+default because Scanner and Operator currently write directly to Elasticsearch
+and evidence storage.
 
 ## Install
 
-Create the MinIO credential Secret in the target namespace before installing:
+Create the namespace-local MinIO Secret first:
 
-```text
+```bash
+kubectl create namespace atlas-warehouse
 kubectl -n atlas-warehouse create secret generic atlas-warehouse-minio-credentials \
-  --from-literal=root-user="$ATLAS_MINIO_ACCESS_KEY" \
-  --from-literal=root-password="$ATLAS_MINIO_SECRET_KEY"
-helm upgrade --install atlas-warehouse ./deploy/helm/atlas-warehouse-infra \
-  --namespace atlas-warehouse --create-namespace
+  --from-literal=root-user="$ATLAS_MINIO_ROOT_USER" \
+  --from-literal=root-password="$ATLAS_MINIO_ROOT_PASSWORD"
+
+helm upgrade --install atlas-warehouse . \
+  --namespace atlas-warehouse --wait --timeout 15m
 ```
 
-The stable in-cluster endpoints are:
+For OCI and `.tgz` installation, see [`../README.md`](../README.md).
+
+## Endpoints
 
 ```text
 http://atlas-warehouse-elasticsearch.atlas-warehouse.svc.cluster.local:9200
 http://atlas-warehouse-minio.atlas-warehouse.svc.cluster.local:9000
 ```
 
-When Kafka is enabled, its endpoint is:
+When explicitly enabled, Kafka is available at:
 
 ```text
 atlas-warehouse-kafka.atlas-warehouse.svc.cluster.local:9092
 ```
 
-Enable it explicitly for an event-driven or future Flink deployment:
+## Values That Matter
 
-```text
-helm upgrade --install atlas-warehouse ./deploy/helm/atlas-warehouse-infra \
-  --namespace atlas-warehouse --create-namespace \
-  --set kafka.enabled=true
+| Value | Default | Meaning |
+| --- | --- | --- |
+| `global.storageClass` | `nfs-data` | StorageClass for bundled stateful services |
+| `elasticsearch.master.persistence.size` | `20Gi` | Elasticsearch data volume |
+| `minio.persistence.size` | `50Gi` | Evidence/object data volume |
+| `indexBootstrap.enabled` | `true` | Install strict templates and create missing `ast_*` indices |
+| `kafka.enabled` | `false` | Opt-in broker for a future event-driven/Flink profile |
+
+Use immutable image tags or digests in production and enable authentication,
+TLS, backups, resource limits, and a suitable StorageClass. The bundled
+single-node Elasticsearch and standalone MinIO values are for validation, not
+high availability.
+
+## Upgrade Safety
+
+Before changing this release, inspect active ScanRequest Jobs and run a Helm
+diff. Chart `0.1.1` changed Kafka from an unconditional dependency to an
+optional, disabled-by-default dependency. Preserve an existing broker with
+`--set kafka.enabled=true` until external consumers have migrated. The index
+bootstrap hook is idempotent and never touches legacy `astro_*` indices.
+
+## Uninstall And Data
+
+```bash
+helm uninstall atlas-warehouse --namespace atlas-warehouse
 ```
 
-Do not enable Kafka solely for the current scanner/operator path; it has no
-producer or consumer in this release.
-
-When upgrading a release created before chart `0.1.1`, review the Kafka
-decision explicitly. The new default is disabled; pass `--set kafka.enabled=true`
-to retain the existing broker, or leave it disabled only after confirming no
-external workload depends on that Kafka service.
-
-The post-install hook installs strict mappings and creates, if absent,
-`ast_layer_index_v1`, `ast_file_index_v1`, and `ast_coverage_index_v1`.
-The hook is idempotent and never touches legacy `astro_*` indices.
+PVCs are retained according to the cluster policy. Removing them is a separate,
+destructive data-retention decision. Evidence and raw source data are not
+recreated by reinstalling this chart.

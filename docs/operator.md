@@ -1,63 +1,105 @@
+<!--
+Copyright 2026 Astro Survey Atlas contributors.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 # Operator Contract
 
-The namespaced `atlas.zhejianglab.org/v1alpha1` ScanRequest carries a canonical
-ScanPlan v2, scanner execution settings, and Secret key references. The alpha
-CRD remains the same while the embedded plan moves from version 1 to version 2.
+The namespaced `atlas.zhejianglab.org/v1alpha1` CRDs are Kubernetes submission
+surfaces, not replacements for the domain contracts. `ScanRequest` carries a
+canonical ScanPlan v2, execution settings, and Secret key references.
+`MocDiscoveryRequest` carries a bounded public-source intent and policy.
+
+## Multi-Namespace Deployment
+
+One Operator Deployment runs in `atlas-system` and watches a configured,
+explicit, non-empty allowlist such as:
+
+```text
+WATCH_NAMESPACES=atlas-warehouse,astro-data-workspace
+```
+
+The Operator opens one namespaced watch/list scope per entry. An empty value is
+invalid and must fail closed; it must never become Fabric8 `inAnyNamespace()`.
+The same allowlist applies to ScanRequest and MocDiscoveryRequest.
+
+The Operator ServiceAccount is cluster-located in `atlas-system`. The supported
+Helm chart renders one Role and RoleBinding in each watched namespace. Those
+Roles grant only the custom resources and status, Jobs, ConfigMaps, Pods, and
+Pod logs needed for reconciliation. They do not grant Secret reads, arbitrary
+namespace access, or cluster-wide workload access.
+
+## Namespace-Local Ownership
+
+For every request, the Operator creates or observes resources in the request's
+namespace:
+
+| Resource | Ownership rule |
+| --- | --- |
+| Plan ConfigMap | Immutable, secret-free, owned by the request |
+| Scanner/MOC Job | Owned by the request; execution identity includes plan hash |
+| Pod and logs | Read only in the request namespace |
+| Evidence PVC | Must already exist in the request namespace |
+| Source/sink Secret | Referenced by name/key only; values are never read by reconcile |
+
+Kubernetes owner references are namespace-local by design. A request with the
+same name in two watched namespaces produces two independent executions.
 
 ## Evidence Storage
 
-Evidence is not an Elasticsearch document and is not part of the public
-release request. A persisted plan must set `spec.scanner.evidence.claimName`.
-The Operator mounts that PVC into the scanner Job at
-`/var/lib/atlas-evidence` by default (or the configured absolute `mountPath`),
-and requires `plan.evidence.outputPath` to be below that directory. The scanner
-writes the source inventory, normalized scan, and extraction errors there.
-The PVC must exist in the ScanRequest namespace. A CSI-backed object-store
-volume can satisfy this contract; direct object-store evidence writes are
-deferred.
+Persisted ScanPlan execution requires `spec.scanner.evidence.claimName`. The
+Operator mounts that PVC at `/var/lib/atlas-evidence` by default (or the
+configured absolute `mountPath`) and rejects an `evidence.outputPath` outside
+the mount. The scanner writes source inventory, normalized scan, provenance,
+and extraction/write errors there. A CSI-backed object-store volume satisfies
+the same contract; direct object-store writes are deferred.
 
-## Deployment Boundary
+MOC discovery uses an independent evidence path below the configured mount. Its
+Job never writes Elasticsearch or publishes a CoverageLayer.
 
-The supported cluster deployment uses `atlas-warehouse` for Scanner Jobs,
-evidence PVCs, and namespace-local credential references. The repository Helm
-release `deploy/helm/atlas-warehouse-infra` owns the new Elasticsearch, MinIO,
-and strict `ast_*` mapping bootstrap. Kafka is optional
-(`kafka.enabled=false` by default) and is not used by the current Scanner or
-Operator. Scanner sink plans use
-`atlas-warehouse-elasticsearch.atlas-warehouse.svc.cluster.local:9200`; the
-legacy `warehouse` Services and `astro_*` indices are never runtime fallbacks.
+## Scan Reconciliation
 
-## Reconciliation
+For a valid ScanRequest the Operator:
 
-For a valid request the Operator:
-
-1. Validates ScanPlan through `spatial-core` before creating resources.
+1. Validates ScanPlan through `spatial-core` before source access.
 2. Renders a secret-free immutable plan ConfigMap.
-3. Projects credentials through Secret environment/file references without
-   reading their values.
-4. Labels the Job and Pod with a DNS-safe layer identity.
-5. Reuses an equivalent Job already owned by the ScanRequest when an Operator
-   rollout changed the historical execution hash; active work wins, then a
-   successful equivalent Job wins over a stale failed duplicate.
-6. Waits when another non-terminal Job for the same layer exists, then creates
-   the plan/execution-hash-named scanner Job and reports its summary.
+3. Projects Secret keys through environment/file references without reading values.
+4. Creates or adopts the plan/execution-hash-named scanner Job.
+5. Waits when another non-terminal Job refreshes the same layer.
+6. Reports Job phase and a parseable scanner summary.
 
-Changing plan, credential bindings, image, or execution settings creates a new
-Job after the current layer Job terminates. Equivalent Jobs are matched by the
-rendered plan hash and scanner image so an Operator upgrade cannot orphan an
-in-flight or already successful execution. Completed Jobs remain under TTL for
-diagnosis; they are not indexed result history. Elasticsearch layer leases also
-protect CLI and cross-request concurrency.
+Changing a plan, credential binding, image, or execution setting creates a new
+execution after the current layer Job terminates. Equivalent active work is
+adopted; a successful equivalent Job wins over a stale failed duplicate. Job
+TTL is operational cleanup, not indexed scan history.
+
+## MOC Discovery Reconciliation
+
+For a valid `MocDiscoveryRequest`, the Operator accepts only
+`policyRef: cds-public-moc-v1`, creates one bounded evidence-only Job, and
+reports `phase`, `jobName`, `evidencePath`, `candidateCount`, and `probeCount`
+from the Job's compact completion marker. The marker contains no response
+body; complete evidence stays on the evidence mount.
+An HTTP 200 empty response is a successful bounded observation, not evidence
+that the survey does not exist. See [`moc-discovery.md`](moc-discovery.md).
 
 ## Status
 
-CR phases are `INVALID`, `WAITING`, `SUBMITTED`, `RUNNING`, `SUCCEEDED`, and
-`FAILED`. Scanner summary includes layer ID, run ID, snapshot hash, counts,
-available orders, errors, and evidence path. Missing evidence storage or
-credentials fail before source access.
+ScanRequest phases are `INVALID`, `WAITING`, `SUBMITTED`, `RUNNING`,
+`SUCCEEDED`, and `FAILED`. Scanner summaries include layer ID, run ID, source
+snapshot hash, counts, available orders, errors, and evidence path. Missing
+evidence storage or credential references fail before source access.
 
 ## Deliberate Limits
 
 The Operator contains no source enumeration, WCS, HEALPix, evidence generation,
-or Elasticsearch code. It creates one finite Job and does not provide schedules,
-DAGs, arbitrary commands, or user plugins.
+or Elasticsearch code. It creates finite Jobs and provides no schedules, DAGs,
+arbitrary commands, user plugins, or cross-namespace owner references.

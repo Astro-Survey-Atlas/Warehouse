@@ -1,0 +1,124 @@
+# Copyright 2026 Astro Survey Atlas contributors.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ghcr.io/astro-survey-atlas
+
+jobs:
+  artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.15.4
+      - run: mvn -B -Pquality verify
+      - run: mvn -B package -DskipTests
+      - name: Package charts
+        run: |
+          mkdir -p dist
+          helm package deploy/helm/atlas-warehouse-infra --destination dist
+          helm package deploy/helm/atlas-warehouse-operator --destination dist
+      - name: Publish charts to GHCR OCI
+        env:
+          HELM_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$HELM_REGISTRY_TOKEN" | helm registry login "$REGISTRY" \
+            --username "$GITHUB_ACTOR" --password-stdin
+          for chart in dist/*.tgz; do
+            helm push "$chart" "oci://${REGISTRY}/astro-survey-atlas/charts"
+          done
+      - name: Generate checksums
+        run: sha256sum dist/* > dist/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: warehouse-release-artifacts
+          path: |
+            dist/
+            **/target/*-runner.jar
+
+  images:
+    needs: artifacts
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: astro-atlas-scanner
+            context: scanner-cli
+            file: scanner-cli/Dockerfile
+          - name: astro-atlas-operator
+            context: operator
+            file: operator/Dockerfile
+          - name: astro-atlas-moc-discovery
+            context: moc-discovery-cli
+            file: moc-discovery-cli/Dockerfile
+          - name: astro-atlas-query-api
+            context: .
+            file: query-api/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: warehouse-release-artifacts
+          path: build-artifacts
+      - name: Stage runner jars for image contexts
+        run: |
+          set -euo pipefail
+          for module in scanner-cli operator moc-discovery-cli; do
+            mkdir -p "$module/target"
+            jar="$(find build-artifacts -type f -name "${module}-*-runner.jar" -print -quit)"
+            test -n "$jar"
+            cp "$jar" "$module/target/"
+          done
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAMESPACE }}/${{ matrix.name }}:${{ github.ref_name }}
+            ${{ env.IMAGE_NAMESPACE }}/${{ matrix.name }}:${{ github.sha }}
+
+  github-release:
+    needs: [artifacts, images]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: warehouse-release-artifacts
+          path: release
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            release/dist/*
+            release/**/target/*-runner.jar

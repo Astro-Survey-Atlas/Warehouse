@@ -1,3 +1,16 @@
+/*
+ * Copyright 2026 Astro Survey Atlas contributors.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.zhejianglab.astro.atlas.operator;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -85,7 +98,6 @@ public final class ScanRequestOperator implements AutoCloseable {
         if (cause != null) System.err.println("scan request watch closed: " + cause.getClass().getSimpleName());
       }
     };
-    if (config.namespaces().isEmpty()) return List.of(requests.inAnyNamespace().watch(watcher));
     return config.namespaces().stream()
         .map(namespace -> requests.inNamespace(namespace).watch(watcher))
         .toList();
@@ -93,14 +105,10 @@ public final class ScanRequestOperator implements AutoCloseable {
 
   private void reconcileAll(MixedOperation<GenericKubernetesResource, GenericKubernetesResourceList, Resource<GenericKubernetesResource>> requests) {
     try {
-      if (config.namespaces().isEmpty()) {
-        List<GenericKubernetesResource> resources = requests.inAnyNamespace().list().getItems();
+      for (String namespace : config.namespaces()) {
+        List<GenericKubernetesResource> resources = requests.inNamespace(namespace).list().getItems();
+        if (resources == null) continue;
         for (GenericKubernetesResource resource : resources) reconcile(requests, resource);
-      } else {
-        for (String namespace : config.namespaces()) {
-          List<GenericKubernetesResource> resources = requests.inNamespace(namespace).list().getItems();
-          for (GenericKubernetesResource resource : resources) reconcile(requests, resource);
-        }
       }
     } catch (Exception exception) {
       System.err.println("scan request list failed: " + exception.getClass().getSimpleName());
@@ -114,7 +122,6 @@ public final class ScanRequestOperator implements AutoCloseable {
         || eventResource.getMetadata().getName() == null
         || eventResource.getMetadata().getDeletionTimestamp() != null) return;
     String namespace = eventResource.getMetadata().getNamespace();
-    if (namespace == null || namespace.isBlank()) namespace = config.namespaces().stream().findFirst().orElse("");
     if (namespace == null || namespace.isBlank()) {
       setStatus(requests, eventResource, Map.of("phase", "INVALID", "reason", "NamespaceRequired"));
       return;

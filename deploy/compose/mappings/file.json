@@ -1,0 +1,1 @@
+{"index_patterns":["ast_file_index_v1"],"priority":100,"template":{"mappings":{"dynamic":"strict","properties":{"file_id":{"type":"keyword"},"source_uri":{"type":"keyword"},"file_name":{"type":"keyword"},"parent_uri":{"type":"keyword"},"file_type":{"type":"keyword"},"size_bytes":{"type":"long"},"last_modified":{"type":"date"},"indexed_at":{"type":"date"}}}}}

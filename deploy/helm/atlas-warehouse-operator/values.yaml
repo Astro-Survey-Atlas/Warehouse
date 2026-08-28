@@ -1,0 +1,46 @@
+# Copyright 2026 Astro Survey Atlas contributors.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+operator:
+  namespace: atlas-system
+  name: astro-atlas-operator
+  image:
+    repository: ghcr.io/astro-survey-atlas/astro-atlas-operator
+    tag: 0.1.0
+    pullPolicy: IfNotPresent
+  serviceAccount:
+    create: true
+    name: astro-atlas-operator
+  replicas: 1
+  reconcileIntervalSeconds: 10
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# The operator never watches all namespaces. Add a namespace only when its
+# RoleBinding is intentionally part of this release.
+watchNamespaces:
+  - atlas-warehouse
+  - astro-data-workspace
+
+scanner:
+  image: ghcr.io/astro-survey-atlas/astro-atlas-scanner:0.1.0
+
+mocDiscovery:
+  image: ghcr.io/astro-survey-atlas/astro-atlas-moc-discovery:0.1.0
+  evidenceClaim: atlas-evidence
+  evidenceMountPath: /var/lib/atlas-evidence
+
+imagePullSecrets: []

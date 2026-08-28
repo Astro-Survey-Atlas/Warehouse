@@ -1,3 +1,16 @@
+<!--
+Copyright 2026 Astro Survey Atlas contributors.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 # Implementation Plan
 
 This file is the canonical progress ledger. Update it when a phase passes its
@@ -102,3 +115,23 @@ Gate: the four layer recipes pass `npm run artifacts:validate`, the Assets
 build/tests pass with the locked scientific dependencies, all discovery
 requests are terminal and evidence-backed, and only an explicit Assets release
 or reload may change the currently deployed 53-footprint response.
+
+## Phase 7: Open-Source Release Readiness
+
+- [x] Add Apache-style project governance, security, contribution, ownership,
+  release, license, notice, and dependency-attribution files.
+- [x] Publish separate OCI-installable infrastructure and Operator charts with
+  explicit namespace allowlists and least-privilege RoleBindings.
+- [x] Keep Kafka disabled by default and document the future Kafka/Flink profile
+  without making it a v1 runtime dependency.
+- [x] Make release images consume Maven runner artifacts and publish both
+  charts to the GHCR OCI registry.
+- [x] Make MOC discovery Job ownership and terminal count summaries explicit;
+  add parser and owner-reference regression tests.
+- [x] Exclude vendored third-party chart documentation from project Markdown
+  lint while retaining Apache RAT coverage for repository-owned files.
+
+Gate: `mvn` tests/package/quality, Helm lint/template/package, Compose config,
+RAT/SBOM generation, YAML validation, and documentation-link checks pass. A
+running CSST Job remains a read-only operational observation and is never
+modified by this release work.

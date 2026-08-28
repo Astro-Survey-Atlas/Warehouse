@@ -1,0 +1,130 @@
+# Copyright 2026 Astro Survey Atlas contributors.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: astro-survey-atlas-warehouse
+
+services:
+  elasticsearch:
+    image: ${ELASTICSEARCH_IMAGE:-docker.elastic.co/elasticsearch/elasticsearch:8.12.2}
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: ${ES_JAVA_OPTS:--Xms512m -Xmx512m}
+    ports:
+      - "${ELASTICSEARCH_PORT:-9200}:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health?wait_for_status=yellow >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  minio:
+    image: ${MINIO_IMAGE:-quay.io/minio/minio:RELEASE.2024-03-15T01-07-19Z}
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-atlas-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-this-local-password}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/live >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  index-bootstrap:
+    image: ${CURL_IMAGE:-curlimages/curl:8.10.1}
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./mappings:/mappings:ro
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        for mapping in layer file coverage; do
+          curl -fsS -X PUT "http://elasticsearch:9200/_index_template/ast_$${mapping}_index_v1_template" \
+            -H 'Content-Type: application/json' --data-binary @"/mappings/$${mapping}.json";
+        done
+        for index in ast_layer_index_v1 ast_file_index_v1 ast_coverage_index_v1; do
+          status="$$(curl -sS -o /dev/null -w '%{http_code}' "http://elasticsearch:9200/$${index}")";
+          if [ "$${status}" = 404 ]; then
+            curl -fsS -X PUT "http://elasticsearch:9200/$${index}" \
+              -H 'Content-Type: application/json' --data '{"settings":{"number_of_replicas":0}}';
+          elif [ "$${status}" != 200 ]; then
+            echo "unexpected status for $${index}: $${status}" >&2;
+            exit 1;
+          fi;
+        done
+    restart: "no"
+
+  query-api:
+    image: ${QUERY_IMAGE:-ghcr.io/astro-survey-atlas/astro-atlas-query-api:0.1.0}
+    depends_on:
+      index-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      ES_ENDPOINT: http://elasticsearch:9200
+      ES_USERNAME: ${ES_USERNAME:-}
+      ES_PASSWORD: ${ES_PASSWORD:-}
+    ports:
+      - "${QUERY_PORT:-8080}:8080"
+    profiles: [query]
+    restart: unless-stopped
+
+  scanner:
+    image: ${SCANNER_IMAGE:-ghcr.io/astro-survey-atlas/astro-atlas-scanner:0.1.0}
+    depends_on:
+      index-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      ATLAS_SOURCE_ACCESS_KEY: ${ATLAS_SOURCE_ACCESS_KEY:-}
+      ATLAS_SOURCE_SECRET_KEY: ${ATLAS_SOURCE_SECRET_KEY:-}
+      ATLAS_ES_USERNAME: ${ES_USERNAME:-}
+      ATLAS_ES_PASSWORD: ${ES_PASSWORD:-}
+    command: ["--plan", "/plans/scan-plan.json"]
+    volumes:
+      - ${PLAN_DIR:-./plans}:/plans:ro
+      - evidence-data:/var/lib/atlas-evidence
+    profiles: [scanner]
+    restart: "no"
+
+  kafka:
+    image: ${KAFKA_IMAGE:-bitnami/kafka:3.7.1}
+    environment:
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "false"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    volumes:
+      - kafka-data:/bitnami/kafka
+    profiles: [kafka]
+    restart: unless-stopped
+
+volumes:
+  elasticsearch-data:
+  minio-data:
+  evidence-data:
+  kafka-data:

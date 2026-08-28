@@ -1,3 +1,16 @@
+<!--
+Copyright 2026 Astro Survey Atlas contributors.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 # Warehouse Session Handoff
 
 Updated: 2026-08-28
@@ -72,7 +85,8 @@ explicitly unsupported and fail visibly rather than inventing coverage.
 
 The current cluster runs the self-managed Warehouse infrastructure as Helm
 release `atlas-warehouse`, revision 1, in namespace `atlas-warehouse`, from
-the repository chart `atlas-warehouse-infra-0.1.0`. The chart owns the
+the repository chart `atlas-warehouse-infra-0.1.0` (the repository chart is now
+version `0.1.1`; the live release has not been upgraded). The chart owns the
 single-node Elasticsearch, MinIO, and strict `ast_*` mapping bootstrap needed
 by this product. Kafka is now an optional dependency, disabled by default; the
 current Scanner/Operator path writes bounded batches directly and has no Kafka
@@ -239,7 +253,8 @@ FITS binary-table catalogs fail explicitly until separate contracts are added.
 
 ## Next Session
 
-Use this order for future changes:
+Use this order for operational follow-up; documentation and release changes in
+this session do not alter the running CSST Job:
 
 1. Recover `csst-w1-phot-catalog` from the expired `UPDATING` lease with a new
    bounded retry using the current scanner image; preserve the failed Job and
@@ -258,6 +273,12 @@ Use this order for future changes:
 5. Keep unrelated retained PVs and the shared `nfs-data` provisioner outside
    Warehouse application rollouts; the old `warehouse` storage has already
    been released.
+
+The repository release-readiness work is complete: MOC Jobs now carry request
+owner references and emit compact terminal summaries, the release workflow
+stages runner artifacts and pushes both charts to GHCR OCI, and ADRs 0012-0014
+record namespace scope, chart separation, and optional event-driven
+deployment. Run the final local gates before publishing a tag.
 
 ## Do Not Disturb
 
