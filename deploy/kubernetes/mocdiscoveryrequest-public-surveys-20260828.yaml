@@ -1,0 +1,59 @@
+apiVersion: atlas.zhejianglab.org/v1alpha1
+kind: MocDiscoveryRequest
+metadata:
+  name: skymapper-moc-discovery-20260828
+  namespace: atlas-warehouse
+  labels:
+    atlas.zhejianglab.org/track-survey: skymapper
+    atlas.zhejianglab.org/track-task: public-moc-discovery-20260828
+spec:
+  policyRef: cds-public-moc-v1
+  query:
+    surveyName: SkyMapper
+    releaseHint: DR4
+    productHint: color
+---
+apiVersion: atlas.zhejianglab.org/v1alpha1
+kind: MocDiscoveryRequest
+metadata:
+  name: kids-moc-discovery-20260828
+  namespace: atlas-warehouse
+  labels:
+    atlas.zhejianglab.org/track-survey: kids
+    atlas.zhejianglab.org/track-task: public-moc-discovery-20260828
+spec:
+  policyRef: cds-public-moc-v1
+  query:
+    surveyName: KiDS
+    releaseHint: DR5
+    productHint: color-gri
+---
+apiVersion: atlas.zhejianglab.org/v1alpha1
+kind: MocDiscoveryRequest
+metadata:
+  name: vista-viking-moc-discovery-20260828
+  namespace: atlas-warehouse
+  labels:
+    atlas.zhejianglab.org/track-survey: vista
+    atlas.zhejianglab.org/track-task: public-moc-discovery-20260828
+spec:
+  policyRef: cds-public-moc-v1
+  query:
+    surveyName: VISTA VIKING
+    releaseHint: VIKING
+    productHint: J
+---
+apiVersion: atlas.zhejianglab.org/v1alpha1
+kind: MocDiscoveryRequest
+metadata:
+  name: decals-moc-discovery-20260828
+  namespace: atlas-warehouse
+  labels:
+    atlas.zhejianglab.org/track-survey: decals
+    atlas.zhejianglab.org/track-task: public-moc-discovery-20260828
+spec:
+  policyRef: cds-public-moc-v1
+  query:
+    surveyName: DECaLS
+    releaseHint: DR5
+    productHint: color

@@ -62,6 +62,36 @@ CSST retry 写入而变化；契约和索引名称是稳定约定。
   `MocDiscoveryRequest` smoke 已成功，evidence 记录了 CDS HTTP 200 空响应、
   0 candidate/0 probe，不应把它解释成有命中的 discovery 结果。
 
+### 公开巡天 MOC Discovery 与覆盖补充（2026-08-28）
+
+在 Gaia smoke 之外又提交了四个后台 `MocDiscoveryRequest`，均已完成：
+
+| 请求 | Job | 结果 | Evidence |
+| --- | --- | --- | --- |
+| `skymapper-moc-discovery-20260828` | `skymapper-moc-discovery-20260828-moc-discovery` | `SUCCEEDED`; CDS HTTP 200、0 bytes、0 candidate、0 probe | `moc-discovery/skymapper-moc-discovery-20260828-moc-discovery/execution-plan.json` |
+| `kids-moc-discovery-20260828` | `kids-moc-discovery-20260828-moc-discovery` | `SUCCEEDED`; CDS HTTP 200、0 bytes、0 candidate、0 probe | `moc-discovery/kids-moc-discovery-20260828-moc-discovery/execution-plan.json` |
+| `vista-viking-moc-discovery-20260828` | `vista-viking-moc-discovery-20260828-moc-discovery` | `SUCCEEDED`; CDS HTTP 200、0 bytes、0 candidate、0 probe | `moc-discovery/vista-viking-moc-discovery-20260828-moc-discovery/execution-plan.json` |
+| `decals-moc-discovery-20260828` | `decals-moc-discovery-20260828-moc-discovery` | `SUCCEEDED`; CDS HTTP 200、0 bytes、0 candidate、0 probe | `moc-discovery/decals-moc-discovery-20260828-moc-discovery/execution-plan.json` |
+
+这些 ObsCore 搜索的空响应只说明 discovery 端点没有返回候选，不否定已由
+官方页面与 CDS record 复核的产品来源。四个 allowlisted CDS 空间 MOC 已保存
+输入快照并通过离线 Core 重建，作为 Assets 的 `third_party_moc`、
+`footprint_extent`、`estimated` 图层：
+
+| Layer | 产品 | MOC 最大 order | order-4 cells |
+| --- | --- | ---: | ---: |
+| `skymapper-dr4-color-footprint` | SkyMapper DR4 g/r/i color | 10 | 2013 |
+| `kids-dr5-color-footprint` | KiDS DR5 g/r/i color | 10 | 168 |
+| `vista-viking-j-footprint` | VISTA VIKING J | 10 | 154 |
+| `decals-dr5-color-footprint` | DECaLS DR5 g/r/z color | 10 | 1012 |
+
+输入快照、record、MOC、query/preview/statistics/provenance 及可复现 recipe
+位于 Assets 的 `artifacts/public-survey-footprints/` 和
+`src/layers/recipes/`。这四项仍表示 CDS HiPS 的产品可用范围，不是接受 CCD
+多边形、深度选择函数或光谱覆盖；STMOC 的时间轴只保留在 evidence 中。离线
+公开清单目前为 90 products、38 acquired、47 manifest footprints、10 Core
+layers；线上 Assets deployment 尚未因本次数据补充自动 reload。
+
 ## 稳定接口与索引
 
 Warehouse 只维护以下三个当前状态索引：

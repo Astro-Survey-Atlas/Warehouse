@@ -189,6 +189,16 @@ reload/status endpoints. The live public coverage response currently contains
 catalog reload and post-recovery CSST smoke remain pending until the CSST layer
 has a terminal state.
 
+The Assets worktree now also contains four reviewed public CDS MOC layers:
+`skymapper-dr4-color-footprint`, `kids-dr5-color-footprint`,
+`vista-viking-j-footprint`, and `decals-dr5-color-footprint`. Their source
+snapshots, record hashes, generated MOCs, order-4 previews, order-8 query
+blocks, statistics, and provenance are locked under
+`/home/aaron/Repo/Astro-Survey-Atlas-Assets`; the offline bundle reports 90
+products, 38 acquired products, 47 manifest footprints, and 10 Core layers.
+The live deployment remains at its previous 53-footprint response until an
+explicit Assets release/reload is performed.
+
 Exact probe inputs, hashes, counts, and reproduction details are in
 `docs/contract-probe-results-20260825.md`. Live counts and cluster objects are
 time-sensitive observations, not acceptance criteria.
@@ -230,9 +240,10 @@ Use this order for future changes:
 2. After the layer is `ACTIVE` or explicitly `FAILED`, verify counts/evidence,
    reload Assets through the protected endpoint only on success, and rerun the
    catalog/overlap/reverse-lookup/Range smoke.
-3. Retain the completed Gaia `MocDiscoveryRequest` smoke evidence and repeat it
-   only when the CDS upstream contract changes; its current response was HTTP
-   200 with an empty body, so candidate/probe count is zero.
+3. Retain the completed Gaia, SkyMapper, KiDS, VISTA VIKING, and DECaLS
+   `MocDiscoveryRequest` evidence. All five CDS ObsCore searches returned HTTP
+   200 with an empty body, so candidate/probe counts are zero; this is a bounded
+   discovery result, not proof that the reviewed CDS MOCs are absent.
 4. Preserve failed ScanRequests/evidence and verify `FAILED` layers remain
    absent from ACTIVE-only reads. Keep HST multi-HDU WCS and FITS binary-table
    catalog support as separate contract decisions; do not expand the Euclid

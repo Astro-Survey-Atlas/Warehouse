@@ -78,3 +78,27 @@ explicit PVC/object-store mount.
 
 Gate: `mvn test`, `mvn package`, template verification, and targeted smoke tests
 all pass from a clean checkout plus the self-managed `atlas-warehouse` services.
+
+## Phase 6: Public MOC Discovery And Coverage Expansion
+
+- [x] Submit bounded, intent-only `MocDiscoveryRequest` resources for SkyMapper
+  DR4, KiDS DR5, VISTA VIKING J, and DECaLS DR5; retain the evidence-only Jobs
+  and their CDS response records on the evidence PVC.
+- [x] Record the four discovery outcomes as bounded results: CDS ObsCore
+  searches completed with HTTP 200 empty bodies (`candidateCount=0`,
+  `probeCount=0`), without treating an empty candidate response as missing
+  reviewed source data.
+- [x] Acquire and hash the four official/CDS MOC snapshots, preserve record
+  metadata and attribution notes, and register them as `third_party_moc`
+  `footprint_extent` layers with `estimated` precision.
+- [x] Rebuild the four MOCs and all existing public Core layers in the locked
+  Python environment, generating deterministic FITS, order-4 preview,
+  order-8 query, statistics, and provenance artifacts.
+- [x] Regenerate the Assets survey catalog, release manifest, public previews,
+  and tests; the offline bundle now contains 47 footprints across 17 surveys,
+  90 products, and 10 generated Core layers.
+
+Gate: the four layer recipes pass `npm run artifacts:validate`, the Assets
+build/tests pass with the locked scientific dependencies, all discovery
+requests are terminal and evidence-backed, and only an explicit Assets release
+or reload may change the currently deployed 53-footprint response.
