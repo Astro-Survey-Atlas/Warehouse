@@ -133,6 +133,11 @@ that order. The checked-in examples and the self-managed infrastructure chart
 are documented in [`deploy/kubernetes/README.md`](deploy/kubernetes/README.md)
 and [`deploy/helm/atlas-warehouse-infra`](deploy/helm/atlas-warehouse-infra).
 
+The infrastructure chart installs Elasticsearch and MinIO by default. Kafka is
+optional (`--set kafka.enabled=true`) and is not used by the current
+Scanner/Operator path; it is reserved for a future event-driven or Flink
+deployment profile.
+
 ## Contracts And Further Reading
 
 - [`HANDOFF.md`](HANDOFF.md): operational continuation point and deployment notes.

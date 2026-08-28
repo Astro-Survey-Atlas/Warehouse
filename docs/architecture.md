@@ -87,8 +87,14 @@ so replacement never deletes another layer's association with the same file.
 
 The repository Helm release `deploy/helm/atlas-warehouse-infra` owns the new
 runtime dependencies in namespace `atlas-warehouse`: single-node
-Elasticsearch, standalone MinIO, Kafka, and strict `ast_*` index bootstrap. The
-Operator runs in `atlas-system` but watches only `atlas-warehouse`; its Scanner
+Elasticsearch, standalone MinIO, and strict `ast_*` index bootstrap. Kafka is an
+optional chart dependency and is disabled by default because the current
+Scanner/Operator path writes directly to Elasticsearch and evidence storage.
+The default profile excludes Flink and the legacy metadata-ingest Operator;
+Flink remains a possible future event-driven profile rather than a forbidden
+technology. The Operator runs in `atlas-system` but watches the namespaces
+configured in `WATCH_NAMESPACES`; the deployment manifest lists the Warehouse
+and Workspace namespaces explicitly. Its Scanner
 Jobs, evidence PVCs, and source credentials are namespace-local. The legacy
 `warehouse` Helm release is a migration reference only and is not part of this
 runtime path.

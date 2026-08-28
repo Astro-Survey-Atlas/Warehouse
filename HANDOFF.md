@@ -72,17 +72,24 @@ explicitly unsupported and fail visibly rather than inventing coverage.
 
 The current cluster runs the self-managed Warehouse infrastructure as Helm
 release `atlas-warehouse`, revision 1, in namespace `atlas-warehouse`, from
-the repository chart `atlas-warehouse-infra-0.1.0`. It owns the single-node
-Elasticsearch, Kafka, MinIO, and strict `ast_*` mapping bootstrap needed by
-this product. It deliberately does not install Flink or the legacy
-metadata-ingest operator: the v1 scanner writes bounded batches directly and
-Flink is outside the current product boundary. The stable services are:
+the repository chart `atlas-warehouse-infra-0.1.0`. The chart owns the
+single-node Elasticsearch, MinIO, and strict `ast_*` mapping bootstrap needed
+by this product. Kafka is now an optional dependency, disabled by default; the
+current Scanner/Operator path writes bounded batches directly and has no Kafka
+producer or consumer. The default profile does not install Flink or the legacy
+metadata-ingest operator, but a future event-driven/Flink profile may enable
+Kafka. The stable services are:
 
 ```text
 http://atlas-warehouse-elasticsearch.atlas-warehouse.svc.cluster.local:9200
 http://atlas-warehouse-minio.atlas-warehouse.svc.cluster.local:9000
-atlas-warehouse-kafka.atlas-warehouse.svc.cluster.local:9092
 ```
+
+An existing release may still have the previously enabled Kafka StatefulSet
+until an explicit Helm upgrade applies `kafka.enabled=false`. Do not perform
+that infrastructure upgrade while a long-running scan is being observed unless
+the operational impact has been reviewed; changing chart defaults in the
+repository does not stop existing Jobs.
 
 The old `warehouse` release and namespace are absent. The five old
 `Released/Retain` PV objects and their NFS directories for the former

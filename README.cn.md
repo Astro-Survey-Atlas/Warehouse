@@ -100,6 +100,11 @@ PVC、credential Secret、ScanRequest 的顺序部署。完整示例见
 [`deploy/kubernetes/README.md`](deploy/kubernetes/README.md) 和
 [`deploy/helm/atlas-warehouse-infra`](deploy/helm/atlas-warehouse-infra)。
 
+基础设施 chart 默认只安装 Elasticsearch 和 MinIO。Kafka 是可选依赖，使用
+`--set kafka.enabled=true` 显式开启；当前 Scanner/Operator 直接写
+Elasticsearch 和 evidence，不依赖 Kafka。未来如果引入事件驱动或 Flink
+部署 profile，可以在不改变 ScanPlan 契约的前提下启用 Kafka。
+
 ## 契约与延伸阅读
 
 - [`HANDOFF.md`](HANDOFF.md)：运维续接点和部署说明。

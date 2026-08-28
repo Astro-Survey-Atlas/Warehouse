@@ -83,6 +83,9 @@ minio:
       console: 9001
 
 kafka:
+  # Kafka is not required by the current scanner/operator path. Enable it when
+  # a future Flink or event-driven deployment needs a chart-owned broker.
+  enabled: false
   fullnameOverride: atlas-warehouse-kafka
   image:
     registry: container-image-mirror.eva24002.lab.zverse.space:32443/docker.io

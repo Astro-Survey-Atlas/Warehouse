@@ -21,7 +21,9 @@ deferred.
 The supported cluster deployment uses `atlas-warehouse` for Scanner Jobs,
 evidence PVCs, and namespace-local credential references. The repository Helm
 release `deploy/helm/atlas-warehouse-infra` owns the new Elasticsearch, MinIO,
-Kafka, and strict `ast_*` mapping bootstrap. Scanner sink plans use
+and strict `ast_*` mapping bootstrap. Kafka is optional
+(`kafka.enabled=false` by default) and is not used by the current Scanner or
+Operator. Scanner sink plans use
 `atlas-warehouse-elasticsearch.atlas-warehouse.svc.cluster.local:9200`; the
 legacy `warehouse` Services and `astro_*` indices are never runtime fallbacks.
 

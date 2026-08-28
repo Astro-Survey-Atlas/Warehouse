@@ -70,7 +70,9 @@ CoverageLayer + source + ExtractionMode
 ## Controlled Non-Goals
 
 - No SourceUnit in v1.
-- No arbitrary Handler order, plugins, scripts, DAGs, Flink, or general ETL.
+- No arbitrary Handler order, plugins, scripts, DAGs, or general ETL in v1.
+  Flink is not part of the current scanner path, but remains an allowed future
+  deployment option when an explicit event-driven contract is added.
 - No per-row catalog object index.
 - No exact polygon refinement promise for sampled WCS output.
 - No raw-file hosting, proxy download, conversion, or scientific-array reads.

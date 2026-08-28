@@ -51,8 +51,8 @@ multi-order reads, stable cursor, truncation, and shared FileAsset IDs.
 - [x] Rebuild only pre-release `ast_*` mappings and rerun the live k3s smoke
   against the v2 Operator/Scanner path.
 - [x] Add a self-managed `atlas-warehouse` Helm release for Elasticsearch,
-  MinIO, Kafka, and strict `ast_*` mapping bootstrap; keep legacy `warehouse`
-  outside the runtime path.
+  MinIO, and strict `ast_*` mapping bootstrap; keep Kafka optional and disabled
+  by default, and keep legacy `warehouse` outside the runtime path.
 
 Gate: Operator tests and live smoke update only the three `ast_*` indices; all
 legacy `astro_*` resources remain unchanged, and persisted evidence has an

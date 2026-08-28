@@ -8,8 +8,8 @@ CSST retry 写入而变化；契约和索引名称是稳定约定。
 ## 当前结论
 
 - Warehouse 已不再依赖旧 `warehouse` Helm release。新运行时由本仓库的
-  `atlas-warehouse` Helm release 自主管理 Elasticsearch、Kafka、MinIO 和
-  `ast_*` 索引初始化。
+  `atlas-warehouse` Helm release 自主管理 Elasticsearch、MinIO 和
+  `ast_*` 索引初始化；Kafka 已改为可选依赖，当前 Scanner/Operator 不使用。
 - 旧 `warehouse` namespace/release 已删除，旧的 5 个 PV 及其 NFS 数据目录
   已释放。冻结的 `/home/aaron/Repo/data-warehouse` 没有修改，也没有被作为
   运行时 fallback；`astro_*` 索引不在新链路中使用。
@@ -128,7 +128,7 @@ ASSETS_WAREHOUSE_FILE_INDEX=ast_file_index_v1
 
 | 项目 | 当前状态 |
 | --- | --- |
-| 新基础设施 | Helm release `atlas-warehouse`，namespace `atlas-warehouse`，ES/Kafka/MinIO 正常；ES 单节点 `green` |
+| 新基础设施 | Helm release `atlas-warehouse`，namespace `atlas-warehouse`，ES/MinIO 正常；Kafka 仅在显式启用时部署；ES 单节点 `green` |
 | Operator | namespace `atlas-system`，Deployment `astro-atlas-operator`，1/1 ready |
 | Assets | Helm release revision `83`，Deployment rollout revision `83`，Pod ready，NodePort `http://10.15.51.75:32083` |
 | Assets public runtime | `/healthz` 返回 200；`/api/v1/coverage` 当前为 53 footprints，仍包含静态 public bundle |

@@ -10,7 +10,9 @@ this deployment.
 ## Infrastructure
 
 Create the namespace-local MinIO Secret out of band, then install the vendored
-Elasticsearch, MinIO, Kafka, and `ast_*` mapping bootstrap chart:
+Elasticsearch, MinIO, and `ast_*` mapping bootstrap chart. Kafka is optional
+and disabled by default because the current scanner/operator path writes
+directly to Elasticsearch:
 
 ```text
 kubectl apply -f deploy/kubernetes/namespace.yaml
@@ -21,17 +23,35 @@ helm upgrade --install atlas-warehouse ./deploy/helm/atlas-warehouse-infra \
   --namespace atlas-warehouse --create-namespace --wait --timeout 15m
 ```
 
+Enable the chart-owned Kafka broker only for an event-driven or future Flink
+deployment:
+
+```text
+helm upgrade --install atlas-warehouse ./deploy/helm/atlas-warehouse-infra \
+  --namespace atlas-warehouse --create-namespace --wait --timeout 15m \
+  --set kafka.enabled=true
+```
+
 The chart owns these stable endpoints:
 
 ```text
 http://atlas-warehouse-elasticsearch.atlas-warehouse.svc.cluster.local:9200
 http://atlas-warehouse-minio.atlas-warehouse.svc.cluster.local:9000
-atlas-warehouse-kafka.atlas-warehouse.svc.cluster.local:9092
 ```
 
+When enabled, Kafka is available at
+`atlas-warehouse-kafka.atlas-warehouse.svc.cluster.local:9092`.
+
+For a release created with the old chart, upgrading with the new default can
+remove the chart-managed Kafka workload. Preserve it during the upgrade with
+`--set kafka.enabled=true` after checking external consumers; the current
+Scanner/Operator path has no Kafka dependency.
+
 It creates only `ast_layer_index_v1`, `ast_file_index_v1`, and
-`ast_coverage_index_v1` with strict mappings. The chart does not install Flink,
-the legacy metadata operator, or any `astro_*` resource.
+`ast_coverage_index_v1` with strict mappings. The default profile does not
+install Flink or the legacy metadata operator, and it does not create any
+`astro_*` resource. Flink remains a possible future deployment profile; it is
+not a current Scanner requirement.
 
 ## Operator
 
