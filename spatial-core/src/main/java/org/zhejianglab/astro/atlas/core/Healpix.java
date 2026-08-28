@@ -19,8 +19,13 @@ public final class Healpix {
     }
     validateDeclination(decDeg);
     int nside = 1 << order;
+    // Keep the angular conversion identical to Assets Core/healpixjs.  The
+    // shared contract defines theta as (90 - Dec) degrees; using sin(Dec)
+    // instead changes the exact-zero boundary because sin(0) is represented
+    // as zero while cos(pi/2) retains the tiny positive IEEE remainder.
     double phi = Math.toRadians(normalizeRa(raDeg));
-    double z = Math.sin(Math.toRadians(decDeg));
+    double theta = Math.toRadians(90.0 - decDeg);
+    double z = Math.cos(theta);
     double za = Math.abs(z);
     double tt = modulo(phi / (Math.PI / 2), 4.0);
     int face;

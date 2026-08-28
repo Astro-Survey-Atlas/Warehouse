@@ -133,3 +133,66 @@ spec:
                 summary:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: mocdiscoveryrequests.atlas.zhejianglab.org
+spec:
+  group: atlas.zhejianglab.org
+  scope: Namespaced
+  names:
+    plural: mocdiscoveryrequests
+    singular: mocdiscoveryrequest
+    kind: MocDiscoveryRequest
+    shortNames: [atlas-moc]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Survey
+          type: string
+          jsonPath: .spec.query.surveyName
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [query, policyRef]
+              properties:
+                query:
+                  type: object
+                  required: [surveyName]
+                  properties:
+                    surveyName: { type: string, minLength: 1, maxLength: 200 }
+                    releaseHint: { type: string, maxLength: 200 }
+                    productHint: { type: string, maxLength: 200 }
+                policyRef: { type: string, enum: [cds-public-moc-v1] }
+            status:
+              type: object
+              properties:
+                phase: { type: string }
+                jobName: { type: string }
+                reason: { type: string }
+                message: { type: string }
+                observedGeneration: { type: string }
+                evidencePath: { type: string }
+                candidateCount: { type: integer }
+                probeCount: { type: integer }
+                lastTransitionTime:
+                  type: string
+                  format: date-time
+                summary:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true

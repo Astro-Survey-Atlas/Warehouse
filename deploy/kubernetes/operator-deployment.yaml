@@ -25,13 +25,22 @@ spec:
           emptyDir: {}
       containers:
         - name: operator
-          image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-operator:0.2.0-20260826-operatorfix3
+          image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-operator:0.2.0-20260826-mocdiscovery
           imagePullPolicy: IfNotPresent
           env:
-            - name: WATCH_NAMESPACE
-              value: atlas-warehouse
+            # The operator serves the self-managed Warehouse namespace and
+            # optional Workspace callers. Each request still owns resources
+            # in its own namespace.
+            - name: WATCH_NAMESPACES
+              value: atlas-warehouse,astro-data-workspace
             - name: SCANNER_IMAGE
               value: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.2.0-20260826-shutdownfix1
+            - name: MOC_DISCOVERY_IMAGE
+              value: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-moc-discovery:0.1.0-20260826
+            - name: MOC_DISCOVERY_EVIDENCE_CLAIM
+              value: atlas-evidence-smoke
+            - name: MOC_DISCOVERY_EVIDENCE_MOUNT_PATH
+              value: /var/lib/atlas-evidence
             - name: RECONCILE_INTERVAL_SECONDS
               value: "10"
           securityContext:

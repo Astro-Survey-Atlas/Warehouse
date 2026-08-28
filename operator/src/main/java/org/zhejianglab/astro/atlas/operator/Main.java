@@ -10,8 +10,10 @@ public final class Main {
   public static void main(String[] args) {
     OperatorConfig config = OperatorConfig.fromEnvironment();
     try (KubernetesClient client = new KubernetesClientBuilder().build();
-         ScanRequestOperator operator = new ScanRequestOperator(client, config)) {
+         ScanRequestOperator operator = new ScanRequestOperator(client, config);
+         MocDiscoveryRequestOperator mocDiscovery = new MocDiscoveryRequestOperator(client, config)) {
       operator.start();
+      mocDiscovery.start();
       CountDownLatch stopped = new CountDownLatch(1);
       Runtime.getRuntime().addShutdownHook(new Thread(stopped::countDown, "astro-atlas-operator-shutdown"));
       try {

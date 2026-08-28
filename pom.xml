@@ -16,6 +16,7 @@
     <module>scanner-cli</module>
     <module>query-api</module>
     <module>operator</module>
+    <module>moc-discovery-cli</module>
   </modules>
 
   <properties>

@@ -26,6 +26,22 @@ rules:
       - update
       - patch
   - apiGroups:
+      - atlas.zhejianglab.org
+    resources:
+      - mocdiscoveryrequests
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - atlas.zhejianglab.org
+    resources:
+      - mocdiscoveryrequests/status
+    verbs:
+      - get
+      - update
+      - patch
+  - apiGroups:
       - batch
     resources:
       - jobs

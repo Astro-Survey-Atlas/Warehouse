@@ -16,6 +16,7 @@ import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -31,7 +32,7 @@ public final class ScanRequestOperator implements AutoCloseable {
   private final PlanMaterializer materializer;
   private final ScannerJobFactory jobFactory;
   private final ScheduledExecutorService executor;
-  private Watch watch;
+  private final List<Watch> watches = new ArrayList<>();
 
   public ScanRequestOperator(KubernetesClient client, OperatorConfig config) {
     this.client = client;
@@ -58,7 +59,7 @@ public final class ScanRequestOperator implements AutoCloseable {
   public void start() {
     MixedOperation<GenericKubernetesResource, GenericKubernetesResourceList, Resource<GenericKubernetesResource>> requests =
         client.genericKubernetesResources(resourceContext);
-    watch = watch(requests);
+    watches.addAll(watches(requests));
     reconcileAll(requests);
     Duration interval = config.reconcileInterval();
     long intervalMillis = Math.max(1L, interval.toMillis());
@@ -67,11 +68,12 @@ public final class ScanRequestOperator implements AutoCloseable {
 
   @Override
   public void close() {
-    if (watch != null) watch.close();
+    watches.forEach(Watch::close);
+    watches.clear();
     executor.shutdownNow();
   }
 
-  private Watch watch(MixedOperation<GenericKubernetesResource, GenericKubernetesResourceList, Resource<GenericKubernetesResource>> requests) {
+  private List<Watch> watches(MixedOperation<GenericKubernetesResource, GenericKubernetesResourceList, Resource<GenericKubernetesResource>> requests) {
     Watcher<GenericKubernetesResource> watcher = new Watcher<>() {
       @Override
       public void eventReceived(Action action, GenericKubernetesResource resource) {
@@ -83,17 +85,23 @@ public final class ScanRequestOperator implements AutoCloseable {
         if (cause != null) System.err.println("scan request watch closed: " + cause.getClass().getSimpleName());
       }
     };
-    return config.namespace().isBlank()
-        ? requests.inAnyNamespace().watch(watcher)
-        : requests.inNamespace(config.namespace()).watch(watcher);
+    if (config.namespaces().isEmpty()) return List.of(requests.inAnyNamespace().watch(watcher));
+    return config.namespaces().stream()
+        .map(namespace -> requests.inNamespace(namespace).watch(watcher))
+        .toList();
   }
 
   private void reconcileAll(MixedOperation<GenericKubernetesResource, GenericKubernetesResourceList, Resource<GenericKubernetesResource>> requests) {
     try {
-      List<GenericKubernetesResource> resources = config.namespace().isBlank()
-          ? requests.inAnyNamespace().list().getItems()
-          : requests.inNamespace(config.namespace()).list().getItems();
-      for (GenericKubernetesResource resource : resources) reconcile(requests, resource);
+      if (config.namespaces().isEmpty()) {
+        List<GenericKubernetesResource> resources = requests.inAnyNamespace().list().getItems();
+        for (GenericKubernetesResource resource : resources) reconcile(requests, resource);
+      } else {
+        for (String namespace : config.namespaces()) {
+          List<GenericKubernetesResource> resources = requests.inNamespace(namespace).list().getItems();
+          for (GenericKubernetesResource resource : resources) reconcile(requests, resource);
+        }
+      }
     } catch (Exception exception) {
       System.err.println("scan request list failed: " + exception.getClass().getSimpleName());
     }
@@ -106,7 +114,7 @@ public final class ScanRequestOperator implements AutoCloseable {
         || eventResource.getMetadata().getName() == null
         || eventResource.getMetadata().getDeletionTimestamp() != null) return;
     String namespace = eventResource.getMetadata().getNamespace();
-    if (namespace == null || namespace.isBlank()) namespace = config.namespace();
+    if (namespace == null || namespace.isBlank()) namespace = config.namespaces().stream().findFirst().orElse("");
     if (namespace == null || namespace.isBlank()) {
       setStatus(requests, eventResource, Map.of("phase", "INVALID", "reason", "NamespaceRequired"));
       return;
