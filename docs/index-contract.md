@@ -38,6 +38,12 @@ source order. Cells from coarse inputs remain coarse. Precision is `exact`,
 `estimated`, or `entrypoint-only`; response truncation is not stored as edge
 precision.
 
+For `catalog-radec`, all implementations use the same angular conversion before
+the NESTED lookup: `theta = (90 - Dec) * pi / 180` and `phi = RA * pi / 180`,
+then `z = cos(theta)`. This is intentionally part of the ICRS boundary
+contract: replacing it with `sin(Dec)` changes ownership of exact equatorial
+boundary coordinates and makes Warehouse evidence disagree with Assets Core.
+
 ## Write Semantics
 
 - Bulk writes are bounded by record count and UTF-8 bytes with bounded retries.

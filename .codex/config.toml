@@ -1,5 +1,4 @@
 model = "gpt-5.6-luna"
-review_model = "gpt-5.6-sol"
 model_reasoning_effort = "max"
 disable_response_storage = true
 network_access = "enabled"
@@ -7,3 +6,7 @@ sandbox_mode = "danger-full-access"
 approval_policy = "never"
 model_context_window = 272000
 model_auto_compact_token_limit = 240000
+
+[agents]
+default_subagent_model = "gpt-5.6-luna"
+default_subagent_reasoning_effort = "max"

@@ -1,0 +1,68 @@
+apiVersion: atlas.zhejianglab.org/v1alpha1
+kind: ScanRequest
+metadata:
+  name: oss-csst-w1-catalog-full-retry3-20260828
+  namespace: atlas-warehouse
+  labels:
+    atlas.zhejianglab.org/track-survey: csst
+    atlas.zhejianglab.org/track-task: oss-full-bounded-retry3-20260828
+    atlas.zhejianglab.org/retry-of: oss-csst-w1-catalog-full-bulkfix2-20260826
+spec:
+  scanner:
+    image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.2.0-20260826-shutdownfix1
+    backoffLimit: 0
+    activeDeadlineSeconds: 86400
+    ttlSecondsAfterFinished: 86400
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+    evidence:
+      claimName: atlas-evidence-smoke
+      mountPath: /var/lib/atlas-evidence
+  credentials:
+    source:
+      secretName: atlas-oss-csst-credentials
+      accessKeyKey: accessKey
+      secretKeyKey: secretKey
+  plan:
+    version: 2
+    scanRunId: oss-csst-w1-catalog-full-retry3-20260828
+    layer:
+      layerId: csst-w1-phot-catalog
+      surveyId: csst
+      releaseId: csst-sim-w1-20250731
+      productId: csst-w1-phot-catalog
+      modality: catalog
+      coverageRole: occupancy
+      entrypoint: http://oss-cn-hangzhou-zjy-d01-a.res.cloud.zhejianglab.com/data-and-computing/projects/CSST/shared-data/simulation-1000-w1-20250731/outputs_wide1000sqdeg/W1_Phot/
+    source:
+      connector:
+        type: oss
+        endpoint: http://oss-cn-hangzhou-zjy-d01-a.res.cloud.zhejianglab.com
+        region: cn-hangzhou-zjy-d01-a
+        credentialRef:
+          accessKeyEnv: ATLAS_SOURCE_ACCESS_KEY
+          secretKeyEnv: ATLAS_SOURCE_SECRET_KEY
+      location:
+        bucket: data-and-computing
+        prefix: projects/CSST/shared-data/simulation-1000-w1-20250731/outputs_wide1000sqdeg/W1_Phot/
+    filters:
+      includeSuffixes:
+        - .cat
+    extraction:
+      mode: catalog-radec
+      outputOrder: 8
+      catalog:
+        raColumn: ra
+        decColumn: dec
+    sink:
+      connector:
+        type: elasticsearch
+        endpoint: http://atlas-warehouse-elasticsearch.atlas-warehouse.svc.cluster.local:9200
+        credentialRef: {}
+    evidence:
+      outputPath: /var/lib/atlas-evidence/oss-csst-w1-catalog-full-retry3-20260828

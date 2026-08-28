@@ -1,6 +1,6 @@
 # Warehouse Session Handoff
 
-Updated: 2026-08-26
+Updated: 2026-08-28
 
 Repository: `/home/aaron/Repo/Astro-Survey-Atlas-Warehouse`
 
@@ -93,13 +93,14 @@ in place for other namespaces.
 The Warehouse scanner/operator code is deployed separately. The Operator runs
 as Deployment `astro-atlas-operator` in namespace `atlas-system`, using the
 image
-`crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-operator:0.2.0-20260826-operatorfix3`.
+`crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-operator:0.2.0-20260826-mocdiscovery`.
 It watches `ScanRequest` resources in `atlas-warehouse`, creates immutable plan
 ConfigMaps and one scanner Job per rendered plan, and injects the image
 `crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.2.0-20260826-shutdownfix1` for requests that do not pin an
-image. The in-flight CSST full-prefix retry deliberately uses the previous
-`bulkfix1` image and is not modified in place; its checked-in retry manifest
-now points to `shutdownfix1` for future runs.
+image. The previously running CSST full-prefix retry used the older `bulkfix1`
+image and was not modified in place; it has since failed on its six-hour
+deadline. New retries must use `shutdownfix1` (or a deliberately pinned image)
+and a bounded prefix/deadline appropriate to the workload.
 Jobs read OSS/S3/MinIO through Secret references, write the three `ast_*`
 indices, and persist inventory/normalized/error evidence to the
 `atlas-warehouse`-local `atlas-evidence-smoke` PVC.
@@ -117,7 +118,7 @@ batches and a 90-second request timeout for large catalog prefixes.
 The latest local gate was green:
 
 ```text
-mvn test                         # 66 tests passed
+mvn test                         # 70 tests passed
 mvn package -DskipTests          # passed
 Helm template/lint and kubectl dry-run  # checked chart/manifests
 git diff --check                 # clean for the reviewed files
@@ -142,10 +143,12 @@ Recorded probes on 2026-08-25:
 - Assets read ACTIVE CSST, DESI, and Euclid layers from the `ast_*` indices and
   completed catalog, overlap, and file reverse-lookup requests.
 
-The completed bounded-smoke baseline before the current full-prefix retry was
-13 layer documents, 11 FileAssets, and 2,109 coverage edges. The current retry
-adds edges while its layer remains `UPDATING`; its final counts are recorded
-after the Job reaches a terminal state. The final bounded smoke layers are:
+The completed bounded-smoke baseline remains historical evidence. One
+2026-08-28 observation saw 15 layer documents, 22,844 FileAssets, and 92,487
+physical coverage documents; the retry is actively replacing coverage, so
+these counts are time-sensitive and physical coverage includes failed/partial
+evidence. They are not an ACTIVE-only publication count. The known bounded
+smoke layers are:
 
 | ScanRequest | Result |
 | --- | --- |
@@ -155,30 +158,36 @@ after the Job reaches a terminal state. The final bounded smoke layers are:
 | `final-desi-overlap-20260826` | `SUCCEEDED`, 1 file, 5 edges, 0 errors |
 | `final-euclid-vis-20260826` | `SUCCEEDED`, 1 file, 11 edges, 0 errors |
 
-The first CSST catalog attempt and the CSST image failure remain as
-ScanRequest/Job/evidence records; the retry is the authoritative current layer
-state. The current CSST image layer is `FAILED` and therefore contributes no
-queryable coverage. Controlled Assets modality probes also leave Gaia and SDSS
-ACTIVE layers and the non-ICRS HI4PI cube as explicit `FAILED` evidence. The
-Euclid `MER/` root remains inventory-only: 15,948 FITS objects, about 19 TiB,
-were listed but not bulk-scanned. The bounded Euclid VIS tile retry2 excludes
-two PSF FITS files with missing spatial headers and keeps their failure
-evidence; it is the current successful refresh for that layer. The CSST W1
-catalog full-prefix retry is still running under its six-hour deadline; its
-final summary and layer state are recorded after completion. HST multi-HDU and FITS binary-table
-probes remain explicit unsupported/error evidence.
+The first CSST catalog attempts and the CSST image failure remain as
+ScanRequest/Job/evidence records. The previous `csst-w1-phot-catalog` refresh
+`oss-csst-w1-catalog-full-bulkfix2-20260826` reached `DeadlineExceeded` at
+2026-08-27 21:03 UTC after its six-hour deadline, leaving an expired
+`UPDATING` lease and no final snapshot hash. Recovery retry3 now owns the layer
+lease and is the active operational task; it must end as `ACTIVE` or an
+explicit `FAILED` result before Assets treats the layer as settled. The current
+CSST image layer is `FAILED` and contributes no queryable coverage. Controlled
+Assets modality probes leave Gaia and SDSS ACTIVE and the non-ICRS HI4PI cube
+as explicit FAILED evidence. The Euclid `MER/` root remains inventory-only:
+15,948 FITS objects (about 19 TiB) were listed but not bulk-scanned. HST
+multi-HDU and FITS binary-table probes remain explicit unsupported/error
+evidence.
+
+Recovery retry `oss-csst-w1-catalog-full-retry3-20260828` was submitted on
+2026-08-28 with the `shutdownfix1` scanner image and a 24-hour deadline. It is
+currently running in the background; do not modify the Job in place. Recheck
+its Scanner summary, evidence, and final layer state after it reaches a
+terminal phase.
 
 Assets is deployed separately as Helm release `astro-survey-atlas-assets`
-(revision 76, image `0.1.0-20260826-184451`) in namespace
+(revision 83, image `0.1.0-20260827-163611`) in namespace
 `astro-survey-atlas-assets`. It points at the new
 Warehouse Service with `ASSETS_WAREHOUSE_ES_URL` and reads only the three
 `ast_*` indices. Its runtime now merges the 44-record static public bundle
 with ACTIVE Warehouse layers, paginates coverage reads, and exposes controlled
-reload/status endpoints. While the CSST retry is `UPDATING`, the live public
-coverage response contains 53 footprints; bounded smoke passed for health,
-catalog/block reads, CSST/DESI and DESI/Euclid overlap, overlap details,
-reverse lookup, and FITS Range reads. After the CSST layer becomes `ACTIVE`,
-call the protected catalog reload endpoint and repeat the coverage smoke.
+reload/status endpoints. The live public coverage response currently contains
+53 footprints. Health and read-only coverage smoke are passing; the protected
+catalog reload and post-recovery CSST smoke remain pending until the CSST layer
+has a terminal state.
 
 Exact probe inputs, hashes, counts, and reproduction details are in
 `docs/contract-probe-results-20260825.md`. Live counts and cluster objects are
@@ -215,14 +224,20 @@ FITS binary-table catalogs fail explicitly until separate contracts are added.
 
 Use this order for future changes:
 
-1. Keep the self-managed `atlas-warehouse` release, Operator, evidence PVC, and
-   Assets endpoint healthy; rerun bounded scans after image or mapping changes.
-2. Preserve failed ScanRequests/evidence as operational evidence and verify
-   `FAILED` layers remain absent from ACTIVE-only reads.
-3. Treat HST multi-HDU WCS and FITS binary-table catalog support as separate
-   contract decisions. Do not expand the Euclid root scan beyond inventory-only
-   or bounded exact-key tests.
-4. Keep unrelated retained PVs and the shared `nfs-data` provisioner outside
+1. Recover `csst-w1-phot-catalog` from the expired `UPDATING` lease with a new
+   bounded retry using the current scanner image; preserve the failed Job and
+   evidence.
+2. After the layer is `ACTIVE` or explicitly `FAILED`, verify counts/evidence,
+   reload Assets through the protected endpoint only on success, and rerun the
+   catalog/overlap/reverse-lookup/Range smoke.
+3. Retain the completed Gaia `MocDiscoveryRequest` smoke evidence and repeat it
+   only when the CDS upstream contract changes; its current response was HTTP
+   200 with an empty body, so candidate/probe count is zero.
+4. Preserve failed ScanRequests/evidence and verify `FAILED` layers remain
+   absent from ACTIVE-only reads. Keep HST multi-HDU WCS and FITS binary-table
+   catalog support as separate contract decisions; do not expand the Euclid
+   root scan beyond inventory-only or bounded exact-key tests.
+5. Keep unrelated retained PVs and the shared `nfs-data` provisioner outside
    Warehouse application rollouts; the old `warehouse` storage has already
    been released.
 

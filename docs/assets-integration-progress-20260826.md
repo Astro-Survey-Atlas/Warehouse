@@ -1,6 +1,6 @@
 # Warehouse 与 Assets 进度对齐
 
-更新日期：2026-08-26
+更新日期：2026-08-28
 
 本文可以直接转给 Assets 团队。集群数量和 Job 状态是观测值，会随着
 CSST retry 写入而变化；契约和索引名称是稳定约定。
@@ -13,9 +13,10 @@ CSST retry 写入而变化；契约和索引名称是稳定约定。
 - 旧 `warehouse` namespace/release 已删除，旧的 5 个 PV 及其 NFS 数据目录
   已释放。冻结的 `/home/aaron/Repo/data-warehouse` 没有修改，也没有被作为
   运行时 fallback；`astro_*` 索引不在新链路中使用。
-- Scanner/Operator 主链路已经完成修复和回归测试。当前唯一仍在运行的长任务
-  是 CSST W1 catalog 全前缀 retry；在它结束并验证前，Assets 不应读取该层的
-  partial 数据。
+- Scanner/Operator 主链路已经完成修复和回归测试。CSST W1 catalog 全前缀
+  retry 已在六小时 deadline 触发 `DeadlineExceeded`；对应 layer 仍为
+  `UPDATING` 且 lease 已过期，必须先恢复为 `ACTIVE` 或 `FAILED`，Assets
+  才能把该层视为 settled 数据。
 
 ## 已完成的 Warehouse 工作
 
@@ -50,14 +51,16 @@ CSST retry 写入而变化；契约和索引名称是稳定约定。
   hash 和 scanner image 复用等价 Job；非终态任务和成功任务优先于过期的失败
   duplicate。
 - Job 新默认 termination grace period 为 120 秒。当前 Operator 镜像为
-  `astro-atlas-operator:0.2.0-20260826-operatorfix3`，未指定 image 的新请求
+  `astro-atlas-operator:0.2.0-20260826-mocdiscovery`，未指定 image 的新请求
   默认使用 `astro-atlas-scanner:0.2.0-20260826-shutdownfix1`。
 - MOC Discovery 已加入 namespaced `MocDiscoveryRequest` CRD。Assets 只提交
   `surveyName` 以及可选提示，Operator 在受控 CDS policy 下创建独立 evidence
   Job；当前实现镜像已推送为
   `astro-atlas-operator:0.2.0-20260826-mocdiscovery` 和
   `astro-atlas-moc-discovery:0.1.0-20260826`。Discovery 不写 `ast_*`，也不
-  发布 CoverageLayer。CRD 已安装，但 Operator rollout 等待下方长任务完成。
+  发布 CoverageLayer。CRD 已安装，Operator 已 rollout 1/1；Gaia/DR3
+  `MocDiscoveryRequest` smoke 已成功，evidence 记录了 CDS HTTP 200 空响应、
+  0 candidate/0 probe，不应把它解释成有命中的 discovery 结果。
 
 ## 稳定接口与索引
 
@@ -97,27 +100,28 @@ ASSETS_WAREHOUSE_FILE_INDEX=ast_file_index_v1
 | --- | --- |
 | 新基础设施 | Helm release `atlas-warehouse`，namespace `atlas-warehouse`，ES/Kafka/MinIO 正常；ES 单节点 `green` |
 | Operator | namespace `atlas-system`，Deployment `astro-atlas-operator`，1/1 ready |
-| Assets | Helm release revision `81`，Deployment rollout revision `81`，Pod ready，NodePort `http://10.15.51.75:32083` |
+| Assets | Helm release revision `83`，Deployment rollout revision `83`，Pod ready，NodePort `http://10.15.51.75:32083` |
 | Assets public runtime | `/healthz` 返回 200；`/api/v1/coverage` 当前为 53 footprints，仍包含静态 public bundle |
-| ES 观测快照 | 约 19:12 查询到 13 layer docs、8,194 FileAsset docs、34,134 coverage docs；后两项包含正在写入的 partial 数据，不是 Assets 可发布计数 |
+| ES 观测快照 | 2026-08-28 某时点观测为 15 layer docs、22,844 FileAsset docs、92,487 physical coverage docs；CSST retry 正在替换 coverage，数字会变化且包含失败/partial 数据，不是 Assets 可发布计数 |
 
-当前 CSST retry：
+当前 CSST retry（已失败，待恢复）：
 
 ```text
 ScanRequest: oss-csst-w1-catalog-full-bulkfix2-20260826
-Job:         oss-csst-w1-catalog-full-bulkfix2-20260826-scan-b11b99a19f
+Job:         oss-csst-w1-catalog-full-bulkfix2-20260826-scan-f186ff54c3
 layer:       csst-w1-phot-catalog
-state:       UPDATING
-phase:       WRITING
+state:       UPDATING（lease 已过期）
+phase:       DeadlineExceeded / 无最终 summary
 image:       astro-atlas-scanner:0.2.0-20260826-bulkfix1
 deadline:    6h
 ```
 
-最近一次 evidence summary 观测为 8,277 files、32,398 coverage、0 errors；
-`sourceSnapshotSha256`、catalog row stats 和最终 normalized scan 尚未生成。
-这个 Job 是进行中的执行，不能删除、修改或被 Assets 当作已完成结果使用。
-当前 Operator 仍运行旧的 `operatorfix3` 镜像；长任务完成后再使用已推送的
-`mocdiscovery` 镜像 rollout，并验证 discovery Job 的 evidence path/status。
+Job 在 2026-08-27 21:03 UTC 因六小时 active deadline 失败；其 layer 文档仍
+保留 `UPDATING`、过期 lease、空 snapshot hash 和空最终计数。这个 Job、其
+evidence 和失败 ScanRequest 必须保留，不能被 Assets 当作已完成结果使用。
+下一步是用 `shutdownfix1` 或明确固定的新镜像提交 bounded retry，完成 layer
+终态和 evidence 校验。`oss-csst-w1-catalog-full-retry3-20260828` 已于
+2026-08-28 提交，当前在后台运行，使用 24 小时 deadline；不要原地修改该 Job。
 
 其他关键 layer：
 
@@ -147,7 +151,7 @@ Warehouse 的事实来源分两层：
 
 ## 已完成验证
 
-- 根目录 `mvn test`：66 tests passed。
+- 根目录 `mvn test`：70 tests passed。
 - `mvn package -DskipTests`：通过。
 - Warehouse Helm lint/template、Kubernetes manifest dry-run、`git diff --check`：
   通过。
@@ -157,15 +161,15 @@ Warehouse 的事实来源分两层：
   coverage catalog/block、CSST-DESI overlap、DESI-Euclid overlap、overlap
   details、reverse lookup 和 FITS Range 读取。
 
-## CSST 完成后的共同验收
+## 当前遗留与共同验收
 
 按以下顺序对齐：
 
-1. 等待 `oss-csst-w1-catalog-full-bulkfix2-20260826` 进入终态；检查 Operator
-   summary 可解析、`phase=COMPLETED`、snapshot hash、catalog row counts、
+1. 保留 `oss-csst-w1-catalog-full-bulkfix2-20260826` 的失败资源和 evidence，
+   提交新的 bounded retry，检查 summary、snapshot hash、catalog row counts、
    errors 和最终 evidence。
-2. 检查 `csst-w1-phot-catalog` 变为 `ACTIVE`，并核对 layer `file_count`、
-   `coverage_count` 与 evidence；若失败，保持 `FAILED` 并只保留失败证据。
+2. 检查 `csst-w1-phot-catalog` 变为 `ACTIVE` 或明确 `FAILED`，并核对 layer
+   `file_count`、`coverage_count` 与 evidence；不能留下过期 `UPDATING`。
 3. 仅在成功后使用 Assets admin token 调用
    `POST /api/v1/admin/catalog/reload`，再检查
    `GET /api/v1/admin/catalog/status` 的 load mode、timestamp、数量和
@@ -175,10 +179,9 @@ Warehouse 的事实来源分两层：
    不可查询。
 
 需要 Assets 侧另行处理的一项：当前 live Assets deployment 的
-`ASSETS_WAREHOUSE_SCANNER_IMAGE` 仍是 `astro-atlas-scanner:...-cutover1`，而
-Warehouse Operator 新默认值是 `...-shutdownfix1`。未来由 Assets 管理端提交新
-任务前，应统一默认 image 并重新 build/push/rollout；当前进行中的 Job 已固定为
-`bulkfix1`，不要原地修改。
+`ASSETS_WAREHOUSE_SCANNER_IMAGE` 已为 `astro-atlas-scanner:...-shutdownfix1`，
+与 Warehouse Operator 默认值一致。CSST 旧 Job 仍固定为 `bulkfix1`，不要原地
+修改；请通过新 ScanRequest retry 进行恢复。
 
 ## 参考文档
 

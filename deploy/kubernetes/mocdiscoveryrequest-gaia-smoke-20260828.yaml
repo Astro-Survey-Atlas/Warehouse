@@ -1,0 +1,14 @@
+apiVersion: atlas.zhejianglab.org/v1alpha1
+kind: MocDiscoveryRequest
+metadata:
+  name: gaia-moc-discovery-smoke-20260828
+  namespace: atlas-warehouse
+  labels:
+    atlas.zhejianglab.org/track-survey: gaia
+    atlas.zhejianglab.org/track-task: moc-discovery-smoke-20260828
+spec:
+  policyRef: cds-public-moc-v1
+  query:
+    surveyName: Gaia
+    releaseHint: DR3
+    productHint: main source

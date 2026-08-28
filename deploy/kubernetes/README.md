@@ -35,6 +35,21 @@ the legacy metadata operator, or any `astro_*` resource.
 
 ## Operator
 
+The Operator also watches the namespaced `MocDiscoveryRequest` CRD. Discovery
+requests use the fixed `cds-public-moc-v1` policy, create an independent
+evidence-only Job, and never write the Warehouse `ast_*` indices or publish a
+CoverageLayer. The checked-in smoke request exercises the Gaia/DR3 intent:
+
+```text
+kubectl apply -f deploy/kubernetes/mocdiscoveryrequest-gaia-smoke-20260828.yaml
+kubectl -n atlas-warehouse get mocdiscoveryrequest gaia-moc-discovery-smoke-20260828 -o yaml
+kubectl -n atlas-warehouse get job -l atlas.zhejianglab.org/moc-discovery=true
+```
+
+The request status exposes the Job name and evidence path. A successful Job
+means the bounded execution and evidence write completed; candidate/probe
+counts still reflect the upstream CDS response and may legitimately be zero.
+
 ## Build Images
 
 Build the runner jars and container images from the repository root:
@@ -122,6 +137,14 @@ kubectl apply -f deploy/kubernetes/scanrequest-desi-catalog.yaml
 kubectl apply -f deploy/kubernetes/scanrequest-desi-overlap.yaml
 kubectl apply -f deploy/kubernetes/scanrequest-csst-oss-catalog.yaml
 kubectl apply -f deploy/kubernetes/scanrequest-csst-oss-demo.yaml
+```
+
+To recover the bounded CSST catalog layer after an expired execution, submit a
+new request rather than editing the old Job:
+
+```text
+kubectl apply -f deploy/kubernetes/scanrequest-csst-oss-catalog-full-retry3-20260828.yaml
+kubectl -n atlas-warehouse get scanrequest oss-csst-w1-catalog-full-retry3-20260828 -o yaml
 ```
 
 CSST examples additionally require the existing OSS credential keys to be

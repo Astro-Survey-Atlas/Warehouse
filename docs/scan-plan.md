@@ -42,6 +42,11 @@ rejected with a migration error because public Handler ordering was removed.
 | `catalog-radec` | `outputOrder`, RA and Dec columns | Map catalog coordinates to occupancy cells |
 | `catalog-healpix` | pixel column and exactly one fixed order or order column | Preserve catalog NESTED order/ipix values |
 
+`catalog-radec` uses the shared ICRS angular boundary conversion
+`theta=(90-Dec)*pi/180`, `phi=RA*pi/180` before calculating the NESTED cell.
+The conversion must remain identical to Assets Core so exact cell identities are
+stable when Workspace imports Warehouse evidence.
+
 Unsupported formats for the selected mode remain FileAssets with extraction
 evidence but no invented SpatialCoverage. FITS WCS mode never silently falls
 back to a center point.
