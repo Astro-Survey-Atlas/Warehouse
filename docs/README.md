@@ -19,7 +19,8 @@ Read the documents in this order when evaluating or operating Warehouse:
 2. [`architecture.md`](architecture.md) for components, namespaces, ownership, and asynchronous execution.
 3. [`project-boundary.md`](project-boundary.md) and [`requirements.md`](requirements.md) for ownership and v1 rules.
 4. [`scan-plan.md`](scan-plan.md), [`index-contract.md`](index-contract.md), [`query-api.md`](query-api.md), and [`operator.md`](operator.md) for stable interfaces.
-5. [`moc-discovery.md`](moc-discovery.md), [`public-survey-coverage.md`](public-survey-coverage.md), and [`sourceunit-roadmap.md`](sourceunit-roadmap.md) for evidence and future scope.
+5. [`moc-discovery.md`](moc-discovery.md), [`contract-probes.md`](contract-probes.md), and [`sourceunit-roadmap.md`](sourceunit-roadmap.md) for evidence and future scope.
+6. [`self-test.md`](self-test.md) for the repeatable Kubernetes smoke baseline.
 
 ## Audience Map
 
@@ -28,6 +29,7 @@ Read the documents in this order when evaluating or operating Warehouse:
 | End user | [`../deploy/helm/README.md`](../deploy/helm/README.md) or [`../deploy/compose/README.md`](../deploy/compose/README.md) |
 | Kubernetes operator | [`operator.md`](operator.md) and [`../deploy/kubernetes/README.md`](../deploy/kubernetes/README.md) |
 | Asset/Workspace integrator | [`cross-repo-contract.md`](cross-repo-contract.md) |
+| Maintainer smoke check | [`self-test.md`](self-test.md) |
 | Contributor | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) |
 | Release maintainer | [`../RELEASING.md`](../RELEASING.md) |
 

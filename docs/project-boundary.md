@@ -44,10 +44,12 @@ or data lake.
 
 ## Namespace Boundary
 
-One Operator may watch several explicitly allowlisted request namespaces. A
+One Operator may watch several explicitly allowlisted request namespaces (the
+default Helm values watch only `atlas-warehouse`). A
 request, its plan ConfigMap, Job, evidence PVC, and credential references stay
-in the request namespace. The Operator ServiceAccount lives in `atlas-system`,
-but each watched namespace receives a separate least-privilege Role/RoleBinding.
+in the request namespace. The Operator ServiceAccount lives in the Helm release
+namespace, but each watched namespace receives a separate least-privilege
+Role/RoleBinding.
 An empty allowlist is invalid; it never means "all namespaces".
 
 ## Module Rules

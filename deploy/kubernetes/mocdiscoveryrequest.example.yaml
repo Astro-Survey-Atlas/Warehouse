@@ -9,17 +9,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-apiVersion: v1
-kind: Namespace
+apiVersion: atlas.zhejianglab.org/v1alpha1
+kind: MocDiscoveryRequest
 metadata:
-  name: atlas-system
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: atlas-warehouse
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: astro-data-workspace
+  name: public-survey-moc-example
+  namespace: atlas-warehouse
+spec:
+  policyRef: cds-public-moc-v2
+  query:
+    surveyName: Example Survey
+    releaseHint: release
+    productHint: image

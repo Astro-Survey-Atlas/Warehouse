@@ -39,6 +39,7 @@ Warehouse 不是工作流引擎、科学数据处理系统、原始数据代理�
 | 本地直接运行验证环境 | [`deploy/compose/README.md`](deploy/compose/README.md) |
 | 不构建源码直接安装 Kubernetes | [`deploy/helm/README.md`](deploy/helm/README.md) |
 | 提交 namespaced 扫描 | [`deploy/kubernetes/README.md`](deploy/kubernetes/README.md) |
+| 运行 Kubernetes 自测基线 | [`docs/self-test.md`](docs/self-test.md) |
 | 阅读契约和设计 | [`docs/README.md`](docs/README.md) |
 | 参与贡献或发布 | [`CONTRIBUTING.md`](CONTRIBUTING.md) 和 [`RELEASING.md`](RELEASING.md) |
 
@@ -58,7 +59,7 @@ flowchart LR
     operator[Operator<br/>atlas-system]
     subgraph callers[allowlist namespace]
       warehouseNS[atlas-warehouse]
-      workspaceNS[astro-data-workspace]
+      workspaceNS[astro-data-workspace<br/>可选 allowlist]
       scan[ScanRequest]
       moc[MocDiscoveryRequest]
       scanjob[Scanner Job]
@@ -162,9 +163,8 @@ Operator 是独立 chart，并且必须指定 namespace allowlist：
 ```bash
 helm upgrade --install atlas-warehouse-operator \
   oci://ghcr.io/astro-survey-atlas/charts/atlas-warehouse-operator \
-  --version 0.1.0 --namespace atlas-system --create-namespace \
-  --set 'watchNamespaces[0]=atlas-warehouse' \
-  --set 'watchNamespaces[1]=astro-data-workspace'
+  --version 0.1.1 --namespace atlas-system --create-namespace \
+  --set 'watchNamespaces[0]=atlas-warehouse'
 ```
 
 registry、版本、存储、升级回滚、卸载、健康检查和 Secret 规则见

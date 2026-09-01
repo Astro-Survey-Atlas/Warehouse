@@ -7,7 +7,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ .Values.mocDiscovery.name }}
-  namespace: {{ .Values.operator.namespace }}
+  namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: {{ .Values.mocDiscovery.name }}
     app.kubernetes.io/instance: {{ .Release.Name }}
@@ -41,8 +41,6 @@ spec:
           env:
             - name: WATCH_NAMESPACES
               value: {{ join "," .Values.watchNamespaces | quote }}
-            - name: SCANNER_IMAGE
-              value: "discovery-unused"
             - name: MOC_DISCOVERY_IMAGE
               value: {{ .Values.mocDiscovery.image | quote }}
             - name: MOC_DISCOVERY_EVIDENCE_CLAIM

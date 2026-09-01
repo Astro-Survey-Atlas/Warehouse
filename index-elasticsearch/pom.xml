@@ -45,4 +45,16 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <resources>
+      <resource>
+        <directory>${project.basedir}/../contracts/index</directory>
+        <targetPath>index</targetPath>
+        <includes>
+          <include>*-v1.json</include>
+        </includes>
+      </resource>
+    </resources>
+  </build>
 </project>

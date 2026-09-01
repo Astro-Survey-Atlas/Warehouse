@@ -13,8 +13,8 @@
 
 package org.zhejianglab.astro.atlas.es;
 
-import java.util.LinkedHashMap;
-import java.util.List;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import org.zhejianglab.astro.atlas.core.IndexContract;
 
@@ -27,85 +27,40 @@ public final class ElasticsearchIndexTemplates {
   private ElasticsearchIndexTemplates() {}
 
   public static Map<String, Object> layerTemplate() {
-    return template(LAYER_TEMPLATE_NAME, IndexContract.LAYER_INDEX, layerMappings());
+    return load("layer-v1.json");
   }
 
   public static Map<String, Object> fileTemplate() {
-    return template(FILE_TEMPLATE_NAME, IndexContract.FILE_INDEX, fileMappings());
+    return load("file-v1.json");
   }
 
   public static Map<String, Object> coverageTemplate() {
-    return template(COVERAGE_TEMPLATE_NAME, IndexContract.COVERAGE_INDEX, coverageMappings());
+    return load("coverage-v1.json");
   }
 
   public static Map<String, Object> layerMappings() {
-    Map<String, Object> properties = new LinkedHashMap<>();
-    properties.put("layer_id", keyword());
-    properties.put("survey_id", keyword());
-    properties.put("release_id", keyword());
-    properties.put("product_id", keyword());
-    properties.put("modality", keyword());
-    properties.put("coverage_role", keyword());
-    properties.put("entrypoint", keyword());
-    properties.put("state", keyword());
-    properties.put("scan_run_id", keyword());
-    properties.put("lease_expires_at", Map.of("type", "date"));
-    properties.put("source_snapshot_sha256", keyword());
-    properties.put("available_orders", Map.of("type", "integer"));
-    properties.put("file_count", Map.of("type", "long"));
-    properties.put("coverage_count", Map.of("type", "long"));
-    properties.put("error_count", Map.of("type", "integer"));
-    properties.put("error_summary", keyword());
-    properties.put("updated_at", Map.of("type", "date"));
-    return mappings(properties);
+    return mappings(layerTemplate());
   }
 
   public static Map<String, Object> fileMappings() {
-    Map<String, Object> properties = new LinkedHashMap<>();
-    properties.put("file_id", keyword());
-    properties.put("source_uri", keyword());
-    properties.put("file_name", keyword());
-    properties.put("parent_uri", keyword());
-    properties.put("file_type", keyword());
-    properties.put("size_bytes", Map.of("type", "long"));
-    properties.put("last_modified", Map.of("type", "date"));
-    properties.put("indexed_at", Map.of("type", "date"));
-    return mappings(properties);
+    return mappings(fileTemplate());
   }
 
   public static Map<String, Object> coverageMappings() {
-    Map<String, Object> properties = new LinkedHashMap<>();
-    properties.put("layer_id", keyword());
-    properties.put("source_file_id", keyword());
-    properties.put("source_uri", keyword());
-    properties.put("healpix_order", Map.of("type", "integer"));
-    properties.put("healpix_cell", Map.of("type", "long"));
-    properties.put("coordinate_frame", keyword());
-    properties.put("nesting", keyword());
-    properties.put("coverage_method", keyword());
-    properties.put("coverage_role", keyword());
-    properties.put("modality", keyword());
-    properties.put("precision", keyword());
-    properties.put("source_order", Map.of("type", "integer"));
-    return mappings(properties);
+    return mappings(coverageTemplate());
   }
 
-  private static Map<String, Object> template(String name, String index, Map<String, Object> mappings) {
-    Map<String, Object> template = new LinkedHashMap<>();
-    template.put("index_patterns", List.of(index));
-    template.put("priority", 100);
-    template.put("template", Map.of("mappings", mappings));
-    return template;
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> mappings(Map<String, Object> template) {
+    return (Map<String, Object>) ((Map<?, ?>) template.get("template")).get("mappings");
   }
 
-  private static Map<String, Object> mappings(Map<String, Object> properties) {
-    Map<String, Object> mappings = new LinkedHashMap<>();
-    mappings.put("dynamic", "strict");
-    mappings.put("properties", properties);
-    return mappings;
-  }
-
-  private static Map<String, Object> keyword() {
-    return Map.of("type", "keyword", "ignore_above", 2048);
+  private static Map<String, Object> load(String name) {
+    try (var stream = ElasticsearchIndexTemplates.class.getResourceAsStream("/index/" + name)) {
+      if (stream == null) throw new IllegalStateException("missing index contract resource: " + name);
+      return new ObjectMapper().readValue(stream, new TypeReference<>() {});
+    } catch (java.io.IOException exception) {
+      throw new IllegalStateException("invalid index contract resource: " + name, exception);
+    }
   }
 }

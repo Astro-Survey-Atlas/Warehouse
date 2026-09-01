@@ -75,12 +75,11 @@ transport errors are never collapsed into a zero-result claim.
 Run a checked-in smoke request:
 
 ```bash
-kubectl apply -f deploy/kubernetes/mocdiscoveryrequest-gaia-smoke-20260828.yaml
-kubectl -n atlas-warehouse get mocdiscoveryrequest gaia-moc-discovery-smoke-20260828 -o yaml
+kubectl apply -f deploy/kubernetes/mocdiscoveryrequest.example.yaml
+kubectl -n atlas-warehouse get mocdiscoveryrequest public-survey-moc-example -o yaml
 kubectl -n atlas-warehouse get job -l atlas.zhejianglab.org/moc-discovery=true
 ```
 
-The four public survey requests for SkyMapper DR4, KiDS DR5, VISTA VIKING J,
-and DECaLS DR5 are recorded in
-[`public-survey-coverage.md`](public-survey-coverage.md). Assets owns source
-review, MOC generation, attribution, release manifests, and public publication.
+Assets owns source review, MOC generation, attribution, release manifests, and
+public publication. Historical probe results in this repository are evidence,
+not a public survey catalog.

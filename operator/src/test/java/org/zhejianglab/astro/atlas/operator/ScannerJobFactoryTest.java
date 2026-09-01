@@ -97,4 +97,23 @@ class ScannerJobFactoryTest {
     assertEquals("uid-1", job.getMetadata().getOwnerReferences().get(0).getUid());
     assertEquals("MocDiscoveryRequest", job.getMetadata().getOwnerReferences().get(0).getKind());
   }
+
+  @Test
+  void discoveryJobUsesInjectedDiscoveryConfiguration() {
+    GenericKubernetesResource request = OperatorTestFixtures.request("moc-request");
+    var mapper = new ObjectMapper();
+    var operator = new MocDiscoveryRequestOperator(
+        null,
+        new OperatorScope("atlas", java.time.Duration.ofSeconds(10)),
+        new MocDiscoveryConfig("discovery:test", "evidence-custom", "/evidence"));
+
+    Job job = operator.job(request, "atlas", "moc-request-moc-discovery", "Gaia",
+        mapper.createObjectNode().set("query", mapper.createObjectNode().put("surveyName", "Gaia")));
+
+    var container = job.getSpec().getTemplate().getSpec().getContainers().get(0);
+    assertEquals("discovery:test", container.getImage());
+    assertEquals("/evidence", container.getVolumeMounts().get(0).getMountPath());
+    assertEquals("evidence-custom", job.getSpec().getTemplate().getSpec().getVolumes().get(0)
+        .getPersistentVolumeClaim().getClaimName());
+  }
 }

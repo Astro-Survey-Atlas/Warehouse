@@ -216,7 +216,6 @@ spec:
                 candidateCount: { type: integer }
                 reviewSummary:
                   type: object
-                  required: [schemaVersion, truncated, summaryTruncated, candidates]
                   properties:
                     schemaVersion: { type: integer, enum: [2] }
                     truncated: { type: boolean }

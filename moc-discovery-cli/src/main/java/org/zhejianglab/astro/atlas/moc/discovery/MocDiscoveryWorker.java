@@ -128,13 +128,6 @@ public final class MocDiscoveryWorker {
     }
   }
 
-  private static List<String> probeKeys(Map<String, Object> candidate) {
-    if (candidate.containsKey("mocUrl")) return List.of("mocUrl");
-    if (candidate.containsKey("hipsUrl")) return List.of("hipsUrl");
-    if (candidate.containsKey("recordUrl")) return List.of("recordUrl");
-    return List.of();
-  }
-
   private record ExtractionResult(List<Map<String, Object>> candidates, int recordCount) {}
 
   private static ExtractionResult extractCandidates(String body, DiscoveryPolicy policy, Map<String, Object> request) {
@@ -177,16 +170,6 @@ public final class MocDiscoveryWorker {
     return new ExtractionResult(result, 0);
   }
 
-  private static Map<String, Object> validateMoc(String body, URI uri) {
-    String upper = body.toUpperCase(java.util.Locale.ROOT); Map<String, Object> result = new LinkedHashMap<>(); result.put("format", uri.getPath().toLowerCase().endsWith(".fits") || upper.contains("SIMPLE  =") ? "fits-or-fits-text" : "json-or-text");
-    boolean celestial = upper.contains("ICRS") || upper.contains("EQUATORIAL")
-        || java.util.regex.Pattern.compile("COORDSYS\\s*=\\s*['\"]?C(?:\\s|['\"]|/|$)").matcher(upper).find();
-    result.put("icrs", celestial); result.put("nested", upper.contains("NUNIQ") || upper.contains("NESTED")); result.put("mocDimension", upper.contains("MOC") && !upper.contains("STMOC")); result.put("stmoc", upper.contains("STMOC") || upper.contains("TIMESYS") || upper.contains("TIME"));
-    int max = -1; java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?:MOCORDER|MOCORD_S|ORDER|MAXORDER)\\s*=?\\s*(\\d+)").matcher(upper); while (matcher.find()) max = Math.max(max, Integer.parseInt(matcher.group(1))); result.put("maxOrder", max); result.put("acceptedSpatialMoc", Boolean.TRUE.equals(result.get("icrs")) && Boolean.TRUE.equals(result.get("nested")) && Boolean.TRUE.equals(result.get("mocDimension")) && max >= 0 && max <= 12); if (Boolean.TRUE.equals(result.get("stmoc"))) result.put("timeLoss", "spatial projection discards temporal axis"); return result;
-  }
-
-  private static Map<String, Object> probeError(String id, String kind, String url, String error) { return Map.of("probeId", sha256(id + "\n" + kind + "\n" + url), "candidateId", id, "kind", kind, "url", url, "ok", false, "error", error); }
-  private static void copy(Map<String, Object> source, Map<String, Object> target, String... keys) { for (String key : keys) if (source.containsKey(key)) target.put(key, source.get(key)); }
   private static String sha256(String value) { return sha256(value.getBytes(StandardCharsets.UTF_8)); }
   private static String sha256(byte[] value) {
     try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value)); }
@@ -194,7 +177,6 @@ public final class MocDiscoveryWorker {
   }
   private static void put(Map<String, Object> target, String targetKey, JsonNode node, String... names) { String value = first(node, names); if (value != null && !value.isBlank()) target.put(targetKey, value); }
   private static String first(JsonNode node, String... keys) { for (String key : keys) { JsonNode value = node.get(key); if (value != null && value.isValueNode() && !value.asText().isBlank()) return value.asText(); } return null; }
-  private static String string(Object value) { return value instanceof String ? (String) value : null; }
   private static long number(Object value) { return value instanceof Number ? ((Number) value).longValue() : 0; }
   private static Duration elapsed(long started) { return Duration.ofNanos(System.nanoTime() - started); }
 

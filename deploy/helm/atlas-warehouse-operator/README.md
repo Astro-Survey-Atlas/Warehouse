@@ -13,22 +13,19 @@ limitations under the License.
 
 # Atlas Warehouse Operator Chart
 
-This chart installs the thin Warehouse Operator in `atlas-system` and grants
-it least-privilege access to the explicitly configured `watchNamespaces`. It
-does not install Elasticsearch, MinIO, Kafka, or Flink; install
+This chart installs the thin Warehouse Operator and the two namespaced request
+CRDs in the Helm release namespace, then grants the Operator least-privilege
+access to the explicitly configured `watchNamespaces`. It does not install
+Elasticsearch, MinIO, Kafka, or Flink; install
 `atlas-warehouse-infra` separately for the self-managed dependencies.
 
 ## Install From OCI
 
-Create the namespaces first, then install the published chart:
-
 ```bash
-kubectl apply -f deploy/kubernetes/namespace.yaml
 helm upgrade --install atlas-warehouse-operator \
   oci://ghcr.io/astro-survey-atlas/charts/atlas-warehouse-operator \
-  --version 0.1.0 --namespace atlas-system --create-namespace \
+  --version 0.1.1 --namespace atlas-system --create-namespace \
   --set 'watchNamespaces[0]=atlas-warehouse' \
-  --set 'watchNamespaces[1]=astro-data-workspace' \
   --wait
 ```
 
@@ -41,7 +38,7 @@ list is rejected by the chart schema and the application also fails closed.
 | Value | Meaning |
 | --- | --- |
 | `watchNamespaces` | Explicit request namespaces; never use an all-namespace scope |
-| `operator.namespace` | Namespace of the Operator ServiceAccount and Deployment |
+| Helm release namespace | Namespace of the Operator ServiceAccount and Deployment |
 | `scanner.image` | Default image for ScanRequest Jobs |
 | `mocDiscovery.image` | Image for evidence-only MOC discovery Jobs |
 | `mocDiscovery.evidenceClaim` | Namespace-local PVC name used by discovery Jobs |

@@ -24,18 +24,11 @@ import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.Watch;
-import io.fabric8.kubernetes.client.Watcher;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
-import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 public final class ScanRequestOperator implements AutoCloseable {
   private final KubernetesClient client;
@@ -45,8 +38,7 @@ public final class ScanRequestOperator implements AutoCloseable {
   private final ScanRequestSpecParser parser;
   private final PlanMaterializer materializer;
   private final ScannerJobFactory jobFactory;
-  private final ScheduledExecutorService executor;
-  private final List<Watch> watches = new ArrayList<>();
+  private final NamespacedResourceController controller;
 
   public ScanRequestOperator(KubernetesClient client, OperatorConfig config) {
     this.client = client;
@@ -63,57 +55,17 @@ public final class ScanRequestOperator implements AutoCloseable {
     parser = new ScanRequestSpecParser();
     materializer = new PlanMaterializer(mapper);
     jobFactory = new ScannerJobFactory();
-    executor = Executors.newSingleThreadScheduledExecutor(runnable -> {
-      Thread thread = new Thread(runnable, "scan-request-reconciler");
-      thread.setDaemon(true);
-      return thread;
-    });
+    controller = new NamespacedResourceController(client, config.scope(), resourceContext,
+        this::reconcile, "scan-request");
   }
 
   public void start() {
-    MixedOperation<GenericKubernetesResource, GenericKubernetesResourceList, Resource<GenericKubernetesResource>> requests =
-        client.genericKubernetesResources(resourceContext);
-    watches.addAll(watches(requests));
-    reconcileAll(requests);
-    Duration interval = config.reconcileInterval();
-    long intervalMillis = Math.max(1L, interval.toMillis());
-    executor.scheduleWithFixedDelay(() -> reconcileAll(requests), intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
+    controller.start();
   }
 
   @Override
   public void close() {
-    watches.forEach(Watch::close);
-    watches.clear();
-    executor.shutdownNow();
-  }
-
-  private List<Watch> watches(MixedOperation<GenericKubernetesResource, GenericKubernetesResourceList, Resource<GenericKubernetesResource>> requests) {
-    Watcher<GenericKubernetesResource> watcher = new Watcher<>() {
-      @Override
-      public void eventReceived(Action action, GenericKubernetesResource resource) {
-        reconcile(requests, resource);
-      }
-
-      @Override
-      public void onClose(io.fabric8.kubernetes.client.WatcherException cause) {
-        if (cause != null) System.err.println("scan request watch closed: " + cause.getClass().getSimpleName());
-      }
-    };
-    return config.namespaces().stream()
-        .map(namespace -> requests.inNamespace(namespace).watch(watcher))
-        .toList();
-  }
-
-  private void reconcileAll(MixedOperation<GenericKubernetesResource, GenericKubernetesResourceList, Resource<GenericKubernetesResource>> requests) {
-    try {
-      for (String namespace : config.namespaces()) {
-        List<GenericKubernetesResource> resources = requests.inNamespace(namespace).list().getItems();
-        if (resources == null) continue;
-        for (GenericKubernetesResource resource : resources) reconcile(requests, resource);
-      }
-    } catch (Exception exception) {
-      System.err.println("scan request list failed: " + exception.getClass().getSimpleName());
-    }
+    controller.close();
   }
 
   private synchronized void reconcile(
@@ -163,15 +115,15 @@ public final class ScanRequestOperator implements AutoCloseable {
       }
       if (job == null) {
         if (hasRunningLayerJob(namespace, parsed.spec().plan().layer().layerId(), jobName)) {
-          updateStatus(resource, current, JobStatusMapper.status("WAITING", jobName,
+          ResourceStatus.update(resource, current, JobStatusMapper.status("WAITING", jobName,
               "LayerUpdateInProgress", "another non-terminal Job is refreshing this layer",
-              generation(current), Map.of("layerId", parsed.spec().plan().layer().layerId())));
+              ResourceStatus.generation(current), Map.of("layerId", parsed.spec().plan().layer().layerId())));
           return;
         }
         client.batch().v1().jobs().inNamespace(namespace)
             .resource(jobFactory.scannerJob(current, namespace, jobName, configMapName, parsed.spec(), plan, executionHash)).create();
-        updateStatus(resource, current, JobStatusMapper.status("SUBMITTED", jobName, null, null,
-            generation(current), Map.of()));
+        ResourceStatus.update(resource, current, JobStatusMapper.status("SUBMITTED", jobName, null, null,
+            ResourceStatus.generation(current), Map.of()));
         return;
       }
       JobStatusMapper.Observation observation = JobStatusMapper.observe(job);
@@ -180,15 +132,15 @@ public final class ScanRequestOperator implements AutoCloseable {
         ScannerSummaryParser.Validation validation = ScannerSummaryParser.validateSuccessfulRun(summary,
             parsed.spec().plan().scanRunId(), parsed.spec().plan().layer().layerId());
         if (!validation.valid()) {
-          updateStatus(resource, current, JobStatusMapper.status("FAILED", observedJobName, validation.reason(),
-              "completed Job did not provide a matching scanner summary", generation(current), summary));
+          ResourceStatus.update(resource, current, JobStatusMapper.status("FAILED", observedJobName, validation.reason(),
+              "completed Job did not provide a matching scanner summary", ResourceStatus.generation(current), summary));
           return;
         }
       }
-      updateStatus(resource, current, JobStatusMapper.status(observation.phase(), observedJobName,
-          observation.reason(), observation.message(), generation(current), summary));
+      ResourceStatus.update(resource, current, JobStatusMapper.status(observation.phase(), observedJobName,
+          observation.reason(), observation.message(), ResourceStatus.generation(current), summary));
     } catch (OperatorValidationException exception) {
-      updateStatus(resource, current, invalidStatus(current, exception.getMessage()));
+      ResourceStatus.update(resource, current, invalidStatus(current, exception.getMessage()));
     } catch (Exception exception) {
       System.err.println("scan request reconcile failed for " + current.getMetadata().getName()
           + ": " + exception.getClass().getSimpleName() + ": " + exception.getMessage());
@@ -204,20 +156,20 @@ public final class ScanRequestOperator implements AutoCloseable {
     PersistentVolumeClaim claim = client.persistentVolumeClaims().inNamespace(namespace)
         .withName(source.claimName()).get();
     if (claim == null) {
-      updateStatus(resource, current, invalidStatus(current,
+      ResourceStatus.update(resource, current, invalidStatus(current,
           "scanner.sourceVolume.claimName does not reference an existing PVC: " + source.claimName()));
       return false;
     }
     Map<String, String> labels = claim.getMetadata() == null ? null : claim.getMetadata().getLabels();
     if (labels == null || !OperatorConstants.SCANNER_SOURCE_LABEL_VALUE.equals(labels.get(OperatorConstants.SCANNER_SOURCE_LABEL))) {
-      updateStatus(resource, current, invalidStatus(current,
+      ResourceStatus.update(resource, current, invalidStatus(current,
           "source PVC is not authorized for scanner mounts: " + source.claimName()));
       return false;
     }
     String phase = claim.getStatus() == null ? null : claim.getStatus().getPhase();
     if (!"Bound".equalsIgnoreCase(phase)) {
-      updateStatus(resource, current, JobStatusMapper.status("WAITING", null,
-          "SourceVolumePending", "source PVC is not Bound: " + source.claimName(), generation(current), Map.of()));
+      ResourceStatus.update(resource, current, JobStatusMapper.status("WAITING", null,
+          "SourceVolumePending", "source PVC is not Bound: " + source.claimName(), ResourceStatus.generation(current), Map.of()));
       return false;
     }
     return true;
@@ -317,34 +269,7 @@ public final class ScanRequestOperator implements AutoCloseable {
   }
 
   private static Map<String, Object> invalidStatus(GenericKubernetesResource resource, String message) {
-    return JobStatusMapper.status("INVALID", null, "InvalidSpec", message, generation(resource), Map.of());
-  }
-
-  private static String generation(GenericKubernetesResource resource) {
-    return resource.getMetadata().getGeneration() == null ? null
-        : Long.toString(resource.getMetadata().getGeneration());
-  }
-
-  private static void updateStatus(
-      Resource<GenericKubernetesResource> resource,
-      GenericKubernetesResource current,
-      Map<String, Object> status) {
-    Object existing = current.get("status");
-    if (sameStatus(existing, status)) return;
-    resource.editStatus(item -> {
-      item.setAdditionalProperty("status", status);
-      return item;
-    });
-  }
-
-  private static boolean sameStatus(Object existing, Map<String, Object> desired) {
-    if (!(existing instanceof Map<?, ?> existingMap)) return false;
-    Map<Object, Object> left = new java.util.LinkedHashMap<>();
-    existingMap.forEach(left::put);
-    Map<Object, Object> right = new java.util.LinkedHashMap<>(desired);
-    left.remove("lastTransitionTime");
-    right.remove("lastTransitionTime");
-    return left.equals(right);
+    return JobStatusMapper.status("INVALID", null, "InvalidSpec", message, ResourceStatus.generation(resource), Map.of());
   }
 
   private static void setStatus(
@@ -355,6 +280,6 @@ public final class ScanRequestOperator implements AutoCloseable {
     if (namespace == null || namespace.isBlank()) return;
     Resource<GenericKubernetesResource> handle = requests.inNamespace(namespace)
         .withName(resource.getMetadata().getName());
-    updateStatus(handle, resource, status);
+    ResourceStatus.update(handle, resource, status);
   }
 }

@@ -30,58 +30,41 @@ import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder;
 import io.fabric8.kubernetes.api.model.batch.v1.JobSpecBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.Watch;
-import io.fabric8.kubernetes.client.Watcher;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
 import java.util.LinkedHashMap;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 /** Thin watcher translating intent-only discovery requests into immutable evidence Jobs. */
 public final class MocDiscoveryRequestOperator implements AutoCloseable {
   private static final String KIND = "MocDiscoveryRequest";
   private static final String PLURAL = "mocdiscoveryrequests";
   private final KubernetesClient client;
-  private final OperatorConfig config;
+  private final MocDiscoveryConfig discoveryConfig;
   private final ObjectMapper mapper = new ObjectMapper();
   private final ResourceDefinitionContext context = new ResourceDefinitionContext.Builder()
       .withGroup(OperatorConstants.GROUP).withVersion(OperatorConstants.VERSION).withPlural(PLURAL).withKind(KIND).withNamespaced(true).build();
-  private final ScheduledExecutorService executor;
-  private final List<Watch> watches = new ArrayList<>();
 
   public MocDiscoveryRequestOperator(KubernetesClient client, OperatorConfig config) {
-    this.client = client; this.config = config;
-    executor = Executors.newSingleThreadScheduledExecutor(r -> { Thread t = new Thread(r, "moc-discovery-reconciler"); t.setDaemon(true); return t; });
+    this(client, config.scope(), MocDiscoveryConfig.defaults());
   }
+
+  public MocDiscoveryRequestOperator(KubernetesClient client, OperatorScope scope,
+      MocDiscoveryConfig discoveryConfig) {
+    this.client = client;
+    this.discoveryConfig = discoveryConfig;
+    controller = new NamespacedResourceController(client, scope, context, this::reconcile, "moc-discovery");
+  }
+
+  private final NamespacedResourceController controller;
 
   public void start() {
-    MixedOperation<GenericKubernetesResource, GenericKubernetesResourceList, Resource<GenericKubernetesResource>> requests = client.genericKubernetesResources(context);
-    Watcher<GenericKubernetesResource> watcher = new Watcher<>() {
-      @Override public void eventReceived(Action action, GenericKubernetesResource resource) { reconcile(requests, resource); }
-      @Override public void onClose(io.fabric8.kubernetes.client.WatcherException cause) { if (cause != null) System.err.println("MOC discovery watch closed: " + cause.getMessage()); }
-    };
-    config.namespaces().forEach(namespace -> watches.add(requests.inNamespace(namespace).watch(watcher)));
-    reconcileAll(requests);
-    long interval = Math.max(1, config.reconcileInterval().toMillis());
-    executor.scheduleWithFixedDelay(() -> reconcileAll(requests), interval, interval, TimeUnit.MILLISECONDS);
+    controller.start();
   }
 
-  @Override public void close() { watches.forEach(Watch::close); watches.clear(); executor.shutdownNow(); }
-
-  private void reconcileAll(MixedOperation<GenericKubernetesResource, GenericKubernetesResourceList, Resource<GenericKubernetesResource>> requests) {
-    try {
-      for (String namespace : config.namespaces()) {
-        List<GenericKubernetesResource> resources = requests.inNamespace(namespace).list().getItems();
-        if (resources != null) resources.forEach(resource -> reconcile(requests, resource));
-      }
-    } catch (Exception exception) { System.err.println("MOC discovery list failed: " + exception.getClass().getSimpleName()); }
-  }
+  @Override public void close() { controller.close(); }
 
   private synchronized void reconcile(MixedOperation<GenericKubernetesResource, GenericKubernetesResourceList, Resource<GenericKubernetesResource>> requests, GenericKubernetesResource event) {
     if (event == null || event.getMetadata() == null || event.getMetadata().getName() == null || event.getMetadata().getDeletionTimestamp() != null) return;
@@ -96,7 +79,7 @@ public final class MocDiscoveryRequestOperator implements AutoCloseable {
       // so this controller never rewrites their status or re-runs their Jobs.
       if (!"cds-public-moc-v2".equals(policyRef)) return;
       if (surveyName.isBlank()) {
-        setStatus(resource, current, Map.of("phase", "INVALID", "reason", "InvalidIntent"));
+        ResourceStatus.update(resource, current, Map.of("phase", "INVALID", "reason", "InvalidIntent"));
         return;
       }
       String jobName = KubeNames.dnsLabel(event.getMetadata().getName() + "-moc-discovery", 63);
@@ -104,7 +87,7 @@ public final class MocDiscoveryRequestOperator implements AutoCloseable {
       Job job = client.batch().v1().jobs().inNamespace(namespace).withName(jobName).get();
       if (job == null) {
         client.batch().v1().jobs().inNamespace(namespace).resource(job(event, namespace, jobName, surveyName, spec)).create();
-        setStatus(resource, current, Map.of("phase", "SUBMITTED", "jobName", jobName, "evidencePath", evidencePath));
+        ResourceStatus.update(resource, current, Map.of("phase", "SUBMITTED", "jobName", jobName, "evidencePath", evidencePath));
       } else {
         JobStatusMapper.Observation observation = JobStatusMapper.observe(job);
         Map<String, Object> summary = terminal(observation.phase()) ? discoverySummary(namespace, job) : Map.of();
@@ -119,22 +102,22 @@ public final class MocDiscoveryRequestOperator implements AutoCloseable {
           message = "Discovery completed with a transport or protocol error; inspect evidence";
         }
         Map<String, Object> status = new LinkedHashMap<>(JobStatusMapper.status(phase, jobName,
-            reason, message, generation(current), compactSummary));
+            reason, message, ResourceStatus.generation(current), compactSummary));
         copyCount(status, summary, "candidateCount");
         if (reviewSummary instanceof Map<?, ?> review) status.put("reviewSummary", review);
         status.put("evidencePath", evidencePath);
-        setStatus(resource, current, status);
+        ResourceStatus.update(resource, current, status);
       }
     } catch (Exception exception) {
-      setStatus(resource, current, Map.of("phase", "FAILED", "reason", "ReconcileError",
+      ResourceStatus.update(resource, current, Map.of("phase", "FAILED", "reason", "ReconcileError",
           "message", exception.getMessage() == null ? "discovery reconcile failed" : exception.getMessage()));
     }
   }
 
   Job job(GenericKubernetesResource request, String namespace, String name, String surveyName, JsonNode spec) {
-    String image = env("MOC_DISCOVERY_IMAGE", "ghcr.io/zhejianglab/astro-survey-atlas-moc-discovery:0.1.0");
-    String claim = env("MOC_DISCOVERY_EVIDENCE_CLAIM", "atlas-evidence");
-    String mount = env("MOC_DISCOVERY_EVIDENCE_MOUNT_PATH", "/var/lib/atlas-evidence");
+    String image = discoveryConfig.image();
+    String claim = discoveryConfig.evidenceClaim();
+    String mount = discoveryConfig.evidenceMountPath();
     String output = mount.replaceAll("/+$", "") + "/moc-discovery/" + name;
     var args = new java.util.ArrayList<String>(); args.add("--survey-name"); args.add(surveyName);
     if (spec.path("query").hasNonNull("releaseHint")) { args.add("--release"); args.add(spec.path("query").path("releaseHint").asText()); }
@@ -186,25 +169,8 @@ public final class MocDiscoveryRequestOperator implements AutoCloseable {
     return "SUCCEEDED".equals(phase) || "FAILED".equals(phase);
   }
 
-  private static String env(String key, String fallback) { String value = System.getenv(key); return value == null || value.isBlank() ? fallback : value; }
-  private String evidencePath(String jobName) { return env("MOC_DISCOVERY_EVIDENCE_MOUNT_PATH", "/var/lib/atlas-evidence").replaceAll("/+$", "") + "/moc-discovery/" + jobName + "/execution-plan.json"; }
-  private static String generation(GenericKubernetesResource resource) { return resource.getMetadata().getGeneration() == null ? null : Long.toString(resource.getMetadata().getGeneration()); }
-  private static void setStatus(Resource<GenericKubernetesResource> resource,
-      GenericKubernetesResource current, Map<String, Object> status) {
-    if (sameStatus(current.get("status"), status)) return;
-    resource.editStatus(item -> {
-      item.setAdditionalProperty("status", status);
-      return item;
-    });
-  }
-
-  private static boolean sameStatus(Object existing, Map<String, Object> desired) {
-    if (!(existing instanceof Map<?, ?> existingMap)) return false;
-    Map<Object, Object> left = new LinkedHashMap<>();
-    existingMap.forEach(left::put);
-    Map<Object, Object> right = new LinkedHashMap<>(desired);
-    left.remove("lastTransitionTime");
-    right.remove("lastTransitionTime");
-    return left.equals(right);
+  private String evidencePath(String jobName) {
+    return discoveryConfig.evidenceMountPath().replaceAll("/+$", "")
+        + "/moc-discovery/" + jobName + "/execution-plan.json";
   }
 }

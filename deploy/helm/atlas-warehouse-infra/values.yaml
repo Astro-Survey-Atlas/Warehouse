@@ -12,12 +12,13 @@
 # This chart owns its component names and storage. It has no dependency on the
 # legacy `warehouse` Helm release or on the legacy astro_* indices.
 global:
-  storageClass: nfs-data
+  # Leave empty to use the cluster default; set for a specific storage class.
+  storageClass: ""
 
 elasticsearch:
   fullnameOverride: atlas-warehouse-elasticsearch
   image:
-    registry: container-image-mirror.eva24002.lab.zverse.space:32443/docker.io
+    registry: docker.io
     repository: bitnamilegacy/elasticsearch
     tag: 8.12.2-debian-12-r0
   global:
@@ -30,7 +31,7 @@ elasticsearch:
     heapSize: 512m
     persistence:
       enabled: true
-      storageClass: nfs-data
+      storageClass: ""
       size: 20Gi
     resources:
       requests:
@@ -59,11 +60,11 @@ elasticsearch:
 minio:
   fullnameOverride: atlas-warehouse-minio
   image:
-    registry: container-image-mirror.eva24002.lab.zverse.space:32443/docker.io
+    registry: docker.io
     repository: bitnamilegacy/minio
     tag: 2024.3.15-debian-12-r0
   clientImage:
-    registry: container-image-mirror.eva24002.lab.zverse.space:32443/docker.io
+    registry: docker.io
     repository: bitnamilegacy/minio-client
     tag: 2024.3.9-debian-12-r0
   mode: standalone
@@ -74,7 +75,7 @@ minio:
   defaultBuckets: astro-artifacts
   persistence:
     enabled: true
-    storageClass: nfs-data
+    storageClass: ""
     size: 50Gi
   resources:
     requests:
@@ -99,7 +100,7 @@ kafka:
   enabled: false
   fullnameOverride: atlas-warehouse-kafka
   image:
-    registry: container-image-mirror.eva24002.lab.zverse.space:32443/docker.io
+    registry: docker.io
     repository: bitnamilegacy/kafka
     tag: 3.7.1-debian-12-r4
   kraft:
@@ -118,7 +119,7 @@ kafka:
     controllerOnly: false
     persistence:
       enabled: true
-      storageClass: nfs-data
+      storageClass: ""
       size: 10Gi
     resources:
       requests:
@@ -137,7 +138,7 @@ kafka:
 indexBootstrap:
   enabled: true
   image:
-    repository: container-image-mirror.eva24002.lab.zverse.space:32443/docker.io/curlimages/curl
+    repository: curlimages/curl
     tag: 8.10.1
     pullPolicy: IfNotPresent
   backoffLimit: 12

@@ -31,6 +31,7 @@ class ElasticsearchIndexTemplatesTest {
     assertEquals("integer", ((Map<?, ?>) ((Map<?, ?>) layerMappings.get("properties")).get("available_orders")).get("type"));
     assertEquals("long", ((Map<?, ?>) ((Map<?, ?>) coverageMappings.get("properties")).get("healpix_cell")).get("type"));
     assertEquals("keyword", ((Map<?, ?>) ((Map<?, ?>) coverageMappings.get("properties")).get("precision")).get("type"));
+    assertEquals(2048, ((Map<?, ?>) ((Map<?, ?>) fileMappings.get("properties")).get("source_uri")).get("ignore_above"));
     assertTrue(ElasticsearchIndexTemplates.fileTemplate().containsKey("index_patterns"));
     assertTrue(ElasticsearchIndexTemplates.coverageTemplate().containsKey("template"));
   }

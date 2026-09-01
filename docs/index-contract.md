@@ -13,6 +13,10 @@ limitations under the License.
 
 # Elasticsearch Index Contract
 
+The canonical template documents are [`../contracts/index/`](../contracts/index/).
+The Java adapter and deployment charts consume synchronized copies of those
+files; run `scripts/sync-index-mappings.sh --check` to detect drift.
+
 ## Isolation And Versioning
 
 - `ast_layer_index_v1`

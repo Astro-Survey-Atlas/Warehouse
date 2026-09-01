@@ -22,7 +22,7 @@ samples, flux values, or cube planes.
 | HST complex image WCS | `fits-wcs` | `CTYPE*`, `CRVAL*`, `CRPIX*`, `CD*`/`CDELT*`, `NAXIS1/2` | sampled ICRS/NESTED cells with `estimated` precision, or an item error for unsupported WCS |
 | SDSS spectral FITS | `fits-header-position` | header position keys only | one `entrypoint-only` cell; no wavelength/flux access |
 | Gaia catalog shard | `catalog-radec` | header plus configured RA/Dec columns | deduplicated occupancy cells with `exact` precision |
-| HI4PI spectral cube | `fits-wcs` | cube WCS and spatial `NAXIS*` metadata | spatial cells from header geometry; spectral axes are ignored |
+| HI4PI spectral cube | `fits-wcs` | cube WCS and spatial `NAXIS*` metadata | explicit ICRS is required; otherwise the input remains failed evidence |
 
 ## Running A Probe
 

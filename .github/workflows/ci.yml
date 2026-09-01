@@ -42,8 +42,12 @@ jobs:
       - run: helm lint deploy/helm/atlas-warehouse-infra
       - run: helm lint deploy/helm/atlas-warehouse-operator
       - run: helm template atlas-warehouse deploy/helm/atlas-warehouse-infra > /tmp/infra.yaml
-      - run: helm template atlas-warehouse-operator deploy/helm/atlas-warehouse-operator > /tmp/operator.yaml
+      - run: helm template atlas-warehouse-operator deploy/helm/atlas-warehouse-operator --include-crds > /tmp/operator.yaml
+      - run: helm template atlas-warehouse-operator deploy/helm/atlas-warehouse-operator --set mocDiscovery.enabled=false >/tmp/operator-no-moc.yaml
+      - run: helm template atlas-warehouse deploy/helm/atlas-warehouse-infra --set kafka.enabled=true >/tmp/infra-kafka.yaml
       - run: docker compose -f deploy/compose/compose.yaml config
+      - run: docker compose -f deploy/compose/compose.yaml --profile kafka config
+      - run: ./scripts/sync-index-mappings.sh --check
       - run: git diff --check
 
   markdown:

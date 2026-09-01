@@ -21,6 +21,10 @@ Accepted
 
 Publish strict composable templates for `ast_layer_index_v1`, `ast_file_index_v1`, and `ast_coverage_index_v1`, and make deployment verification explicit. The adapter must not create indices or mutate an existing incompatible mapping because dynamic field inference already caused identifier fields to become `text`, which breaks stable sorting and makes the index contract depend on document arrival order.
 
+The template JSON is maintained once under `contracts/index/`. Java resources,
+Compose mappings, and the Helm ConfigMap are synchronized copies checked by
+`scripts/sync-index-mappings.sh --check`.
+
 ## Consequences
 
 - Identifiers, URIs, categories, and query sort fields have stable `keyword` mappings.

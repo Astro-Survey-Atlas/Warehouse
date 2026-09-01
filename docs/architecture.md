@@ -48,9 +48,9 @@ flowchart LR
     W[Workspace]
   end
   subgraph k8s[Kubernetes]
-    C1[atlas-system<br/>one Operator]
+    C1[Helm release namespace<br/>one Operator]
     N1[atlas-warehouse<br/>allowlisted namespace]
-    N2[astro-data-workspace<br/>allowlisted namespace]
+    N2[astro-data-workspace<br/>optional allowlisted namespace]
     SR[ScanRequest]
     MR[MocDiscoveryRequest]
     SJ[Scanner Job]
@@ -86,9 +86,10 @@ an equivalent active or successful Job is adopted instead of duplicated.
 
 Every generated Job, ConfigMap, evidence mount, and credential reference is
 namespace-local to its request. Kubernetes owner references are only used
-within that namespace. The Operator ServiceAccount lives in `atlas-system`,
-while its permissions are granted by one Role/RoleBinding pair per allowlisted
-request namespace.
+within that namespace. The Operator ServiceAccount lives in the Helm release
+namespace, while its permissions are granted by one Role/RoleBinding pair per
+allowlisted request namespace. The default release watches `atlas-warehouse`;
+Workspace is an explicit opt-in.
 
 ## MOC Discovery Boundary
 

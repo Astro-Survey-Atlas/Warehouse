@@ -41,6 +41,7 @@ future source-grouping contract and is not part of v1.
 | Run the bundled services locally | [`deploy/compose/README.md`](deploy/compose/README.md) |
 | Install on Kubernetes without building source | [`deploy/helm/README.md`](deploy/helm/README.md) |
 | Submit a namespaced scan | [`deploy/kubernetes/README.md`](deploy/kubernetes/README.md) |
+| Run the Kubernetes self-test baseline | [`docs/self-test.md`](docs/self-test.md) |
 | Understand the contracts | [`docs/README.md`](docs/README.md) |
 | Contribute or prepare a release | [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`RELEASING.md`](RELEASING.md) |
 
@@ -61,7 +62,7 @@ flowchart LR
     operator[Operator<br/>atlas-system]
     subgraph callers[allowlisted request namespaces]
       warehouseNS[atlas-warehouse]
-      workspaceNS[astro-data-workspace]
+      workspaceNS[astro-data-workspace<br/>optional allowlist entry]
       scan[ScanRequest]
       moc[MocDiscoveryRequest]
       scanjob[Scanner Job]
@@ -171,9 +172,8 @@ The Operator is a separate chart and requires an explicit namespace allowlist:
 ```bash
 helm upgrade --install atlas-warehouse-operator \
   oci://ghcr.io/astro-survey-atlas/charts/atlas-warehouse-operator \
-  --version 0.1.0 --namespace atlas-system --create-namespace \
-  --set 'watchNamespaces[0]=atlas-warehouse' \
-  --set 'watchNamespaces[1]=astro-data-workspace'
+  --version 0.1.1 --namespace atlas-system --create-namespace \
+  --set 'watchNamespaces[0]=atlas-warehouse'
 ```
 
 See [`deploy/helm/README.md`](deploy/helm/README.md) for registry values,

@@ -18,7 +18,7 @@ Warehouse publishes two charts with separate lifecycles:
 | Chart | Owns | Default namespace |
 | --- | --- | --- |
 | `atlas-warehouse-infra` | Elasticsearch, MinIO, strict `ast_*` bootstrap, optional Kafka | `atlas-warehouse` |
-| `atlas-warehouse-operator` | Operator Deployment, ServiceAccount, and per-namespace Role/RoleBinding | `atlas-system` |
+| `atlas-warehouse-operator` | ScanRequest/MocDiscoveryRequest CRDs, Operator Deployment, ServiceAccounts, and per-namespace Roles/RoleBindings | release namespace (commonly `atlas-system`) |
 
 The charts do not install the legacy `warehouse` release or create/use
 `astro_*` indices. The default scanner path writes bounded batches directly to
@@ -33,10 +33,9 @@ not installed.
 - A registry from which the Operator, scanner, and MOC discovery images can be pulled.
 - Namespace-local credential Secrets; values never belong in chart values committed to Git.
 
-Create namespaces and the infrastructure credential Secret:
+Create the infrastructure credential Secret in the release namespace:
 
 ```bash
-kubectl apply -f deploy/kubernetes/namespace.yaml
 kubectl -n atlas-warehouse create secret generic atlas-warehouse-minio-credentials \
   --from-literal=root-user="$ATLAS_MINIO_ROOT_USER" \
   --from-literal=root-password="$ATLAS_MINIO_ROOT_PASSWORD"
@@ -52,9 +51,8 @@ helm upgrade --install atlas-warehouse \
 
 helm upgrade --install atlas-warehouse-operator \
   oci://ghcr.io/astro-survey-atlas/charts/atlas-warehouse-operator \
-  --version 0.1.0 --namespace atlas-system --create-namespace \
+  --version 0.1.1 --namespace atlas-system --create-namespace \
   --set 'watchNamespaces[0]=atlas-warehouse' \
-  --set 'watchNamespaces[1]=astro-data-workspace' \
   --wait --timeout 10m
 ```
 
@@ -64,7 +62,7 @@ The same commands work with a downloaded `.tgz` instead of an OCI reference:
 helm pull oci://ghcr.io/astro-survey-atlas/charts/atlas-warehouse-infra \
   --version 0.1.1
 helm pull oci://ghcr.io/astro-survey-atlas/charts/atlas-warehouse-operator \
-  --version 0.1.0
+  --version 0.1.1
 helm upgrade --install atlas-warehouse ./atlas-warehouse-infra-0.1.1.tgz \
   --namespace atlas-warehouse --wait
 ```
@@ -121,8 +119,9 @@ index retention before removing storage.
 
 ## Submit A Request
 
-Install the CRDs, create an evidence PVC and namespace-local Secrets, then
-apply a `ScanRequest` or `MocDiscoveryRequest`. The complete request contract
+The Operator chart installs both CRDs. Create an evidence PVC and
+namespace-local Secrets, then apply a `ScanRequest` or `MocDiscoveryRequest`.
+The complete request contract
 and examples are in [`../kubernetes/README.md`](../kubernetes/README.md) and
 [`../../docs/operator.md`](../../docs/operator.md).
 

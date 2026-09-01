@@ -42,9 +42,11 @@ the current header-only extractor reads the first HDU only. It must not be
 advertised as an HST footprint until multi-HDU WCS selection is implemented
 and separately verified.
 
-The HI4PI result demonstrates the current contract for a spectral cube:
-spatial axes 1/2 are sampled, the spectral `VRAD` axis is ignored, and all
-7,494 cells are `estimated` at output order 8.
+The HI4PI result records an earlier extraction behavior for a spectral cube:
+spatial axes 1/2 were sampled, the spectral `VRAD` axis was ignored, and all
+7,494 cells were `estimated` at output order 8. Current strict validation
+requires an explicit ICRS frame, so this historical input is now retained as
+failed evidence rather than advertised as supported coverage.
 
 ## Input References
 

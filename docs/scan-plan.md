@@ -64,6 +64,19 @@ Unsupported formats for the selected mode remain FileAssets with extraction
 evidence but no invented SpatialCoverage. FITS WCS mode never silently falls
 back to a center point.
 
+## Source And Runtime Adapters
+
+The `local` connector reads a directory or single file. The `s3` connector also
+covers S3-compatible and OSS endpoints through the AWS SDK; object identities
+are canonicalized as `s3://bucket/key` or `oss://bucket/key`. Set `region` when
+the endpoint requires a non-default signing region; otherwise `us-east-1` is
+used. Credentials are resolved from the referenced environment variables or
+mounted files, never from plan values.
+
+The scanner CLI accepts `--plan <path>` and can run without Elasticsearch with
+`--memory` for extractor diagnostics. Published runner jars are built by the
+release workflow; local Maven development can use the regular module classpath.
+
 ## Validation
 
 - Version is exactly 2 and scanRunId/layer identity use stable lowercase IDs.

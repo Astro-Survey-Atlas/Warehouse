@@ -13,9 +13,10 @@ public final class MocDiscoveryMain {
   private MocDiscoveryMain() {}
 
   public static void main(String[] args) {
-    OperatorConfig config = OperatorConfig.fromEnvironment();
+    OperatorScope scope = OperatorScope.fromEnvironment();
+    MocDiscoveryConfig discoveryConfig = MocDiscoveryConfig.fromEnvironment();
     try (KubernetesClient client = new KubernetesClientBuilder().build();
-         MocDiscoveryRequestOperator operator = new MocDiscoveryRequestOperator(client, config)) {
+         MocDiscoveryRequestOperator operator = new MocDiscoveryRequestOperator(client, scope, discoveryConfig)) {
       operator.start();
       CountDownLatch stopped = new CountDownLatch(1);
       Runtime.getRuntime().addShutdownHook(new Thread(stopped::countDown, "astro-atlas-moc-discovery-shutdown"));

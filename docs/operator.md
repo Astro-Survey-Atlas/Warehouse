@@ -20,11 +20,11 @@ canonical ScanPlan v2, execution settings, and Secret key references.
 
 ## Multi-Namespace Deployment
 
-One Operator Deployment runs in `atlas-system` and watches a configured,
+One Operator Deployment runs in its Helm release namespace and watches a configured,
 explicit, non-empty allowlist such as:
 
 ```text
-WATCH_NAMESPACES=atlas-warehouse,astro-data-workspace
+WATCH_NAMESPACES=atlas-warehouse
 ```
 
 The Operator opens one namespaced watch/list scope per entry. An empty value is
@@ -32,8 +32,8 @@ invalid and must fail closed; it must never become Fabric8 `inAnyNamespace()`.
 The same namespace allowlist applies to ScanRequest and MocDiscoveryRequest,
 but they run in separate controller Deployments and ServiceAccounts.
 
-The Operator ServiceAccount is cluster-located in `atlas-system`. The supported
-Helm chart renders one Role and RoleBinding in each watched namespace. Those
+The Operator ServiceAccount is namespaced with the Helm release. The supported
+Helm chart renders the CRDs, one Role and one RoleBinding in each watched namespace. Those
 Roles grant only the custom resources and status, Jobs, ConfigMaps, Pods, and
 Pod logs needed for reconciliation. They do not grant Secret reads, arbitrary
 namespace access, or cluster-wide workload access.
@@ -100,8 +100,9 @@ reports `phase`, `jobName`, `evidencePath`, and `candidateCount` from the Job's
 compact completion marker. The marker contains no response body; complete
 evidence stays on the evidence mount. Discovery does not probe or publish MOCs;
 Assets owns the subsequent build request.
-An HTTP 200 empty response is a successful bounded observation, not evidence
-that the survey does not exist. See [`moc-discovery.md`](moc-discovery.md).
+An HTTP 200 response with an empty body is a protocol error and is retained as
+failure evidence. A valid empty JSON result is a successful bounded observation,
+not evidence that the survey does not exist. See [`moc-discovery.md`](moc-discovery.md).
 
 ## Status
 

@@ -16,7 +16,7 @@ metadata:
   namespace: atlas-warehouse
 spec:
   scanner:
-    image: crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.1.0
+    image: ghcr.io/astro-survey-atlas/astro-atlas-scanner:0.1.0
     backoffLimit: 1
     activeDeadlineSeconds: 86400
     ttlSecondsAfterFinished: 86400
@@ -41,7 +41,7 @@ spec:
       passwordKey: password
   plan:
     version: 2
-    scanRunId: survey-release-1-20260825
+    scanRunId: survey-release-1
     layer:
       layerId: survey-release-1-image
       surveyId: survey
@@ -52,7 +52,7 @@ spec:
     source:
       connector:
         type: oss
-        endpoint: https://oss.example.invalid
+        endpoint: https://object-store.example.invalid
         credentialRef:
           accessKeyEnv: ATLAS_SOURCE_ACCESS_KEY
           secretKeyEnv: ATLAS_SOURCE_SECRET_KEY
@@ -76,4 +76,4 @@ spec:
           usernameEnv: ATLAS_ES_USERNAME
           passwordEnv: ATLAS_ES_PASSWORD
     evidence:
-      outputPath: /var/lib/atlas-evidence/survey-release-1-20260825
+      outputPath: /var/lib/atlas-evidence/survey-release-1

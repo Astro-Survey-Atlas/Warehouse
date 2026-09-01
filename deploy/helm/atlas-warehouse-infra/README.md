@@ -55,7 +55,7 @@ atlas-warehouse-kafka.atlas-warehouse.svc.cluster.local:9092
 
 | Value | Default | Meaning |
 | --- | --- | --- |
-| `global.storageClass` | `nfs-data` | StorageClass for bundled stateful services |
+| `global.storageClass` | `""` | StorageClass for bundled stateful services; empty uses the cluster default |
 | `elasticsearch.master.persistence.size` | `20Gi` | Elasticsearch data volume |
 | `minio.persistence.size` | `50Gi` | Evidence/object data volume |
 | `indexBootstrap.enabled` | `true` | Install strict templates and create missing `ast_*` indices |

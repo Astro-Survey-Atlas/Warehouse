@@ -10,7 +10,6 @@
 # limitations under the License.
 
 operator:
-  namespace: atlas-system
   name: astro-atlas-operator
   image:
     repository: ghcr.io/astro-survey-atlas/astro-atlas-operator
@@ -33,7 +32,6 @@ operator:
 # RoleBinding is intentionally part of this release.
 watchNamespaces:
   - atlas-warehouse
-  - astro-data-workspace
 
 scanner:
   image: ghcr.io/astro-survey-atlas/astro-atlas-scanner:0.1.0

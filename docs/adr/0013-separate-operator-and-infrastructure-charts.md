@@ -22,9 +22,9 @@ Accepted
 Warehouse publishes two Helm charts with independent lifecycles:
 `atlas-warehouse-infra` owns Elasticsearch, MinIO, index bootstrap, and the
 optional Kafka dependency; `atlas-warehouse-operator` owns the Operator
-Deployment, ServiceAccount, and namespace-scoped RBAC. The Operator chart does
-not install stateful services, and the infrastructure chart does not install
-the Operator.
+Deployment, ServiceAccounts, request CRDs, and namespace-scoped RBAC. The
+Operator chart does not install stateful services, and the infrastructure chart
+does not install the Operator.
 
 Users may install either chart from the OCI registry or a packaged `.tgz`.
 Chart versions describe chart templates and mapping dependencies; application
