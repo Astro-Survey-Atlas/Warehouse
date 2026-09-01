@@ -64,6 +64,25 @@ Unsupported formats for the selected mode remain FileAssets with extraction
 evidence but no invented SpatialCoverage. FITS WCS mode never silently falls
 back to a center point.
 
+## Error And Retry Policy
+
+Extraction errors are terminal for one scan execution. The scanner records the
+file and error in Evidence, stops at the first failed file, marks the layer
+`FAILED`, and does not continue enumerating or publish a partial layer. A
+Catalog file also stops at its first malformed spatial row. A caller must create
+a new ScanRequest/execution identity to retry after correcting the source or
+plan. Scanner `backoffLimit` is fixed at `0`; omitted values default to `0` and
+non-zero values are rejected by the Operator and CRD. MOC discovery Jobs use
+the same no-replay setting.
+
+Suffix filtering, blank lines, and comment lines are normal input filtering and
+do not fail a scan. Unsupported formats remain FileAssets with evidence but no
+coverage, as described above. Transport failures are separate: the S3 adapter
+allows two SDK retries (three attempts total), a five-minute API-call limit, a
+one-minute attempt/socket limit, and the Elasticsearch bulk adapter keeps its
+bounded retry of retryable requests/items. These transport retries never cause
+the scanner to skip a file or catalog row.
+
 ## Source And Runtime Adapters
 
 The `local` connector reads a directory or single file. The `s3` connector also

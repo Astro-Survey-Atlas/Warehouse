@@ -16,6 +16,7 @@ package org.zhejianglab.astro.atlas.scanner;
 import java.net.URI;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -32,6 +33,9 @@ import org.zhejianglab.astro.atlas.core.ScanPlan;
 import org.zhejianglab.astro.atlas.core.SourceConnector;
 import org.zhejianglab.astro.atlas.core.SourceContent;
 import org.zhejianglab.astro.atlas.core.SourceType;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
+import software.amazon.awssdk.core.retry.RetryPolicy;
+import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.ResponseInputStream;
@@ -47,6 +51,10 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
 /** S3-compatible listing and content access for S3 and Alibaba OSS. */
 public final class S3SourceAdapter implements SourceAdapter {
   private static final long FITS_HEADER_RANGE_END = 2880L * 256L - 1L;
+  private static final Duration API_CALL_TIMEOUT = Duration.ofMinutes(5);
+  private static final Duration API_ATTEMPT_TIMEOUT = Duration.ofMinutes(1);
+  private static final Duration SOCKET_TIMEOUT = Duration.ofMinutes(1);
+  private static final int MAX_RETRIES = 2;
   private final S3Client client;
   private final SourceType sourceType;
 
@@ -67,12 +75,24 @@ public final class S3SourceAdapter implements SourceAdapter {
     software.amazon.awssdk.services.s3.S3ClientBuilder builder = S3Client.builder()
         .endpointOverride(URI.create(connector.endpoint()))
         .region(Region.of(connector.region() == null || connector.region().isBlank() ? "us-east-1" : connector.region()))
-        .forcePathStyle(true);
+        .forcePathStyle(true)
+        .overrideConfiguration(clientOverrideConfiguration())
+        .httpClientBuilder(UrlConnectionHttpClient.builder()
+            .connectionTimeout(Duration.ofSeconds(10))
+            .socketTimeout(SOCKET_TIMEOUT));
     if (credentials.containsKey("accessKey") && credentials.containsKey("secretKey")) {
       builder = builder.credentialsProvider(StaticCredentialsProvider.create(
           AwsBasicCredentials.create(credentials.get("accessKey"), credentials.get("secretKey"))));
     }
     return new S3SourceAdapter(builder.build(), connector.type());
+  }
+
+  static ClientOverrideConfiguration clientOverrideConfiguration() {
+    return ClientOverrideConfiguration.builder()
+        .apiCallTimeout(API_CALL_TIMEOUT)
+        .apiCallAttemptTimeout(API_ATTEMPT_TIMEOUT)
+        .retryPolicy(RetryPolicy.builder().numRetries(MAX_RETRIES).build())
+        .build();
   }
 
   @Override

@@ -130,7 +130,7 @@ public final class MocDiscoveryRequestOperator implements AutoCloseable {
     var pod = new PodSpecBuilder().withRestartPolicy("Never").withContainers(container)
         .withVolumes(new VolumeBuilder().withName("evidence").withPersistentVolumeClaim(new PersistentVolumeClaimVolumeSourceBuilder().withClaimName(claim).withReadOnly(false).build()).build()).build();
     var template = new PodTemplateSpecBuilder().withMetadata(new ObjectMetaBuilder().withLabels(labels).build()).withSpec(pod).build();
-    var jobSpec = new JobSpecBuilder().withBackoffLimit(1).withActiveDeadlineSeconds(600L).withTtlSecondsAfterFinished(86400).withTemplate(template).build();
+    var jobSpec = new JobSpecBuilder().withBackoffLimit(0).withActiveDeadlineSeconds(600L).withTtlSecondsAfterFinished(86400).withTemplate(template).build();
     ObjectMetaBuilder metadata = new ObjectMetaBuilder().withName(name).withNamespace(namespace).withLabels(labels);
     if (request.getMetadata().getUid() != null) {
       metadata.withOwnerReferences(new OwnerReferenceBuilder()

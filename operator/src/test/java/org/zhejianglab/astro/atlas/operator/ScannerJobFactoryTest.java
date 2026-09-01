@@ -35,7 +35,7 @@ class ScannerJobFactoryTest {
     var plan = new PlanMaterializer(mapper).render(
         OperatorTestFixtures.localPlan(null), CredentialsSpec.empty());
     var spec = new ScanRequestSpec(OperatorTestFixtures.localPlan(null),
-        new ScannerSpec("atlas-scanner:test", null, 1, 86_400L, 86_400,
+        new ScannerSpec("atlas-scanner:test", null, 0, 86_400L, 86_400,
             ResourceSpec.empty(), OperatorTestFixtures.evidenceVolume(),
             new SourceVolumeSpec("atlas-source", "/survey", "catalogs")), CredentialsSpec.empty());
     ScannerJobFactory factory = new ScannerJobFactory();
@@ -49,6 +49,7 @@ class ScannerJobFactoryTest {
     assertEquals(List.of("java", "-jar", "/app/scanner-cli.jar"),
         job.getSpec().getTemplate().getSpec().getContainers().get(0).getCommand());
     assertEquals(120L, job.getSpec().getTemplate().getSpec().getTerminationGracePeriodSeconds());
+    assertEquals(0, job.getSpec().getBackoffLimit());
     assertEquals(3, job.getSpec().getTemplate().getSpec().getVolumes().size());
     assertEquals("atlas-source", job.getSpec().getTemplate().getSpec().getVolumes().get(1)
         .getPersistentVolumeClaim().getClaimName());
@@ -96,6 +97,7 @@ class ScannerJobFactoryTest {
 
     assertEquals("uid-1", job.getMetadata().getOwnerReferences().get(0).getUid());
     assertEquals("MocDiscoveryRequest", job.getMetadata().getOwnerReferences().get(0).getKind());
+    assertEquals(0, job.getSpec().getBackoffLimit());
   }
 
   @Test

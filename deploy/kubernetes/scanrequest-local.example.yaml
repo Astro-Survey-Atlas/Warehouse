@@ -17,6 +17,7 @@ metadata:
 spec:
   scanner:
     image: ghcr.io/astro-survey-atlas/astro-atlas-scanner:0.1.0
+    backoffLimit: 0
     activeDeadlineSeconds: 3600
     evidence:
       claimName: atlas-evidence

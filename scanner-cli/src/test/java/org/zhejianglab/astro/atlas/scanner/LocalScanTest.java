@@ -17,11 +17,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -32,7 +34,9 @@ import org.zhejianglab.astro.atlas.core.CoverageRole;
 import org.zhejianglab.astro.atlas.core.ExtractionMode;
 import org.zhejianglab.astro.atlas.core.ExtractionSpec;
 import org.zhejianglab.astro.atlas.core.EvidenceSpec;
+import org.zhejianglab.astro.atlas.core.FileType;
 import org.zhejianglab.astro.atlas.core.Filters;
+import org.zhejianglab.astro.atlas.core.InputItem;
 import org.zhejianglab.astro.atlas.core.LayerSpec;
 import org.zhejianglab.astro.atlas.core.Modality;
 import org.zhejianglab.astro.atlas.core.ScanPlan;
@@ -166,6 +170,54 @@ class LocalScanTest {
   }
 
   @Test
+  void stopsReadingCatalogAfterTheFirstInvalidRow() throws Exception {
+    Path catalog = tempDir.resolve("bad-row-first.csv");
+    Files.writeString(catalog,
+        "ra,dec\n180.25,-2.5\nbad,not-a-number\n181.25,-2.5\n",
+        StandardCharsets.UTF_8);
+    InMemoryIndex index = new InMemoryIndex();
+
+    assertThrows(IllegalStateException.class,
+        () -> new ScanService(new LocalSourceAdapter(), index).scan(catalogPlan(catalog)));
+
+    String summary = Files.readString(tempDir.resolve("evidence-catalog-layer/summary.json"));
+    assertTrue(summary.contains("\"catalogRowCount\":2"));
+    assertTrue(summary.contains("\"validCatalogRowCount\":1"));
+    assertTrue(summary.contains("\"invalidCatalogRowCount\":1"));
+  }
+
+  @Test
+  void stopsEnumeratingAfterTheFirstExtractionError() {
+    InputItem first = new InputItem("file:///first.csv", "first.csv", "file:///",
+        FileType.CSV, 10L, null);
+    InputItem invalid = new InputItem("file:///invalid.csv", "invalid.csv", "file:///",
+        FileType.CSV, 10L, null);
+    InputItem later = new InputItem("file:///later.csv", "later.csv", "file:///",
+        FileType.CSV, 10L, null);
+    AtomicInteger opened = new AtomicInteger();
+    SourceAdapter source = new SourceAdapter() {
+      @Override
+      public Stream<InputItem> enumerate(ScanPlan plan) {
+        return Stream.of(first, invalid, later);
+      }
+
+      @Override
+      public org.zhejianglab.astro.atlas.core.SourceContent open(InputItem item) {
+        opened.incrementAndGet();
+        String value = item == invalid
+            ? "ra,dec\nnot-a-coordinate,-2.5\n"
+            : "ra,dec\n180.25,-2.5\n";
+        return () -> new ByteArrayInputStream(value.getBytes(StandardCharsets.UTF_8));
+      }
+    };
+
+    InMemoryIndex index = new InMemoryIndex();
+    assertThrows(IllegalStateException.class, () -> new ScanService(source, index).scan(catalogPlan(tempDir)));
+    assertEquals(2, opened.get());
+    assertEquals(org.zhejianglab.astro.atlas.core.LayerState.FAILED, index.layers().get(0).state());
+  }
+
+  @Test
   void marksAValidPartialScanAsFailedAndHidesItsCoverage() throws Exception {
     writeFits(tempDir.resolve("valid.fits"));
     Files.writeString(tempDir.resolve("invalid.fits"),
@@ -176,10 +228,12 @@ class LocalScanTest {
     assertThrows(IllegalStateException.class,
         () -> new ScanService(new LocalSourceAdapter(), index).scan(fitsPlan(tempDir)));
     assertEquals(org.zhejianglab.astro.atlas.core.LayerState.FAILED, index.layers().get(0).state());
-    assertEquals(1, index.coverages().size(), "partial edges may remain physically present");
-    assertEquals(0, index.searchCoverage(new org.zhejianglab.astro.atlas.core.CoverageLookup(
-        java.util.Set.of("fits-layer"), 8,
-        java.util.Set.of(index.coverages().get(0).healpixCell()), 100, null)).items().size());
+    assertTrue(index.coverages().size() <= 1, "failed scans may leave only bounded physical edges");
+    if (!index.coverages().isEmpty()) {
+      assertEquals(0, index.searchCoverage(new org.zhejianglab.astro.atlas.core.CoverageLookup(
+          java.util.Set.of("fits-layer"), 8,
+          java.util.Set.of(index.coverages().get(0).healpixCell()), 100, null)).items().size());
+    }
   }
 
   @Test

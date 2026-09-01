@@ -92,6 +92,23 @@ execution after the current layer Job terminates. Equivalent active work is
 adopted; a successful equivalent Job wins over a stale failed duplicate. Job
 TTL is operational cleanup, not indexed scan history.
 
+### Scanner failure and retry policy
+
+Scanner and MOC discovery Jobs are created with `backoffLimit=0`. The Operator
+rejects a non-zero
+`spec.scanner.backoffLimit`, so a deterministic extraction error cannot trigger
+another full source enumeration. The scanner stops at the first extraction
+error, records it in Evidence, marks the layer `FAILED`, and does not skip to
+later files; a malformed Catalog row stops that file and the scan as well.
+Callers retry by submitting a new ScanRequest after reviewing the retained
+Evidence. Normal suffix, blank-line, and comment filtering is not an error.
+S3 and Elasticsearch transport adapters retain only their bounded request/item
+retries and explicit timeouts.
+
+MOC discovery has the same no-replay Job policy. Its allowlisted HTTP request
+and task limits remain bounded; a caller submits a new discovery request when a
+failed evidence run should be repeated.
+
 ## MOC Discovery Reconciliation
 
 For a valid `MocDiscoveryRequest`, the discovery Operator accepts only

@@ -46,8 +46,8 @@ public record ScannerSpec(
 
   public ScannerSpec {
     if (resources == null) resources = ResourceSpec.empty();
-    if (backoffLimit != null && backoffLimit < 0) {
-      throw new IllegalArgumentException("scanner.backoffLimit must not be negative");
+    if (backoffLimit != null && backoffLimit != 0) {
+      throw new IllegalArgumentException("scanner.backoffLimit must be 0; extraction errors are terminal");
     }
     if (activeDeadlineSeconds != null && activeDeadlineSeconds <= 0) {
       throw new IllegalArgumentException("scanner.activeDeadlineSeconds must be positive");
@@ -58,6 +58,6 @@ public record ScannerSpec(
   }
 
   public static ScannerSpec defaults(String image) {
-    return new ScannerSpec(image, null, 1, 86_400L, 86_400, ResourceSpec.empty(), null, null);
+    return new ScannerSpec(image, null, 0, 86_400L, 86_400, ResourceSpec.empty(), null, null);
   }
 }

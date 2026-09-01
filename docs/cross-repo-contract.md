@@ -59,7 +59,12 @@ must be reviewed by both consumers.
 Workspace or Assets submits a namespaced `ScanRequest`. Warehouse validates the
 embedded ScanPlan, creates a Job in that same namespace, writes current state to
 Elasticsearch, and stores inventory/errors in Evidence. The caller polls status
-and may continue other work while the Job runs.
+and may continue other work while the Job runs. Scanner and MOC Jobs do not
+replay after failure. Extraction errors are terminal:
+the scanner stops at the first bad file/row, does not skip ahead, and the Job has
+`backoffLimit=0`. A retry is a new request/execution identity after the caller
+reviews Evidence; only bounded transport retries occur inside the S3 and
+Elasticsearch adapters.
 
 ### Public MOC discovery
 

@@ -120,6 +120,9 @@ public final class CatalogHandler implements CoverageExtractor {
         } catch (RuntimeException exception) {
           context.addInvalidCatalogRow();
           context.addError(exception.getMessage() == null ? "malformed catalog spatial value" : exception.getMessage());
+          // A malformed row makes the file result unreliable. Stop this file so
+          // the scan can fail immediately instead of hiding the bad input.
+          break;
         }
       }
     }

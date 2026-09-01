@@ -112,7 +112,7 @@ public final class ScannerJobFactory {
         .withMetadata(metadata(request, namespace, jobName, jobName, plan.sha256(),
             spec.plan().layer().layerId(), executionHash))
         .withSpec(new JobSpecBuilder()
-            .withBackoffLimit(valueOr(scanner.backoffLimit(), 1))
+            .withBackoffLimit(valueOr(scanner.backoffLimit(), 0))
             .withActiveDeadlineSeconds(valueOr(scanner.activeDeadlineSeconds(), 86_400L))
             .withTtlSecondsAfterFinished(valueOr(scanner.ttlSecondsAfterFinished(), 86_400))
             .withTemplate(new PodTemplateSpecBuilder()

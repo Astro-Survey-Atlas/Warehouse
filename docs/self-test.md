@@ -76,6 +76,12 @@ requires successful terminal phases, zero scan errors, `ACTIVE` scan layers,
 and at least one matching layer document; it does not require these historical
 counts. The script never reads or writes legacy `astro_*` indices.
 
+The smoke requests set `backoffLimit: 0`, matching the scanner contract; the
+Asset MOC discovery Job uses the same no-replay policy. If a
+fixture has a malformed file or row, the expected result is one terminal
+`FAILED` request with retained Evidence, not a second Job attempt or a scan
+that silently skips the bad input.
+
 ## Caller Validation
 
 The post-change skill runs both caller paths. Run the caller smoke script

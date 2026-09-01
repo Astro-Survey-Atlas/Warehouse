@@ -44,6 +44,10 @@ CoverageLayer + source + ExtractionMode
   `catalog`, `timeseries`, `visibility`, `event`, and `other`.
 - Source inventory, hashes, filtering failures, and extraction failures are
   retained as evidence and never included in the browser's initial request.
+- Extraction failures are terminal for the scan: the scanner stops at the first
+  failed file (and at the first malformed catalog row), marks the layer `FAILED`,
+  and never skips ahead to publish a partial result. Normal suffix filtering,
+  blank lines, and catalog comments remain non-error filtering.
 - Coverage keeps its actual order. Coarsening finer data is allowed; expanding
   a coarse cell and claiming finer precision is forbidden.
 - Reverse lookup returns candidates, source file URI, layer identity, modality,
@@ -62,6 +66,12 @@ CoverageLayer + source + ExtractionMode
   partial scan is FAILED and never masquerades as empty coverage.
 - No user-visible historical scan result is retained. Kubernetes Jobs may
   remain temporarily under TTL for operational diagnosis.
+- Persisted scanner and MOC discovery Jobs use `backoffLimit=0`. A caller that
+  wants to retry must
+  submit a new ScanRequest/execution identity after diagnosing the evidence;
+  Kubernetes must not replay a deterministic extraction failure. S3 and
+  Elasticsearch adapters may perform only their documented bounded transport
+  retries with request timeouts.
 
 ## Interfaces And Ownership
 

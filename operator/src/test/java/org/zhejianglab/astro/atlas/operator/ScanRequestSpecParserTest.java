@@ -136,4 +136,21 @@ class ScanRequestSpecParserTest {
 
     assertEquals(true, exception.getMessage().contains("readOnly must be false"));
   }
+
+  @Test
+  void rejectsJobRetriesForPersistedScan() {
+    ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
+    var resource = OperatorTestFixtures.request("retrying-scan");
+    resource.setAdditionalProperty("spec", Map.of(
+        "plan", mapper.convertValue(OperatorTestFixtures.localPlan(null), Map.class),
+        "scanner", Map.of(
+            "backoffLimit", 1,
+            "evidence", Map.of("claimName", "atlas-evidence"),
+            "sourceVolume", Map.of("claimName", "atlas-source"))));
+
+    OperatorValidationException exception = assertThrows(OperatorValidationException.class,
+        () -> new ScanRequestSpecParser().parse(resource, "scanner:default"));
+
+    assertTrue(exception.getMessage().contains("scanner.backoffLimit must be 0"));
+  }
 }

@@ -21,12 +21,14 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.zhejianglab.astro.atlas.core.FileType;
 import org.zhejianglab.astro.atlas.core.InputItem;
 import org.zhejianglab.astro.atlas.core.SourceType;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
@@ -34,6 +36,15 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 class S3SourceAdapterTest {
+  @Test
+  void usesBoundedRetriesAndTimeoutsForObjectStoreCalls() {
+    ClientOverrideConfiguration configuration = S3SourceAdapter.clientOverrideConfiguration();
+
+    assertEquals(Duration.ofMinutes(5), configuration.apiCallTimeout().orElseThrow());
+    assertEquals(Duration.ofMinutes(1), configuration.apiCallAttemptTimeout().orElseThrow());
+    assertEquals(2, configuration.retryPolicy().orElseThrow().numRetries());
+  }
+
   @Test
   void requestsOnlyTheFitsHeaderRange() throws Exception {
     byte[] header = "SIMPLE  =                    T".getBytes(StandardCharsets.US_ASCII);

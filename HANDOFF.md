@@ -48,6 +48,14 @@ truncation is reported separately. Layer refreshes move through `UPDATING`,
 references only and never appear in plans, evidence summaries, logs, indices,
 or query responses.
 
+Scanner extraction failures are terminal: the first failed file (or malformed
+catalog row) is recorded in Evidence, later input is not enumerated, and the
+layer becomes `FAILED` without publishing partial state. Persisted scanner and
+MOC discovery Jobs use `backoffLimit=0`; retries are new request executions.
+Normal suffix,
+blank-line, and comment filtering remains non-error filtering. S3 and
+Elasticsearch keep only bounded transport-level retries with explicit timeouts.
+
 ## Deployment
 
 Use `deploy/helm/atlas-warehouse-infra` for Elasticsearch, MinIO, strict index

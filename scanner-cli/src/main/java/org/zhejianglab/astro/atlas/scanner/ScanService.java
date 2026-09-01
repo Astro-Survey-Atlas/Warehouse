@@ -128,12 +128,16 @@ public final class ScanService {
           pendingFiles.add(fileAsset);
           pendingCoverages.addAll(result.coverages());
           progress.processed(result);
-          if (pendingFiles.size() + pendingCoverages.size() >= MAX_PENDING_RECORDS) {
+          boolean extractionFailed = !result.errors().isEmpty();
+          if (extractionFailed || pendingFiles.size() + pendingCoverages.size() >= MAX_PENDING_RECORDS) {
             lease.set(leaseTracker.maybeRenew(lease.get()));
             if (evidence != null) evidence.phase("WRITING");
             writer.upsertBatch(pendingFiles, pendingCoverages);
             pendingFiles = new ArrayList<>();
             pendingCoverages = new ArrayList<>();
+          }
+          if (extractionFailed) {
+            throw new IllegalStateException("scan produced extraction errors: " + errors.first());
           }
         }
       }
@@ -141,9 +145,6 @@ public final class ScanService {
       if (evidence != null) evidence.phase("WRITING");
       if (!pendingFiles.isEmpty() || !pendingCoverages.isEmpty()) {
         writer.upsertBatch(pendingFiles, pendingCoverages);
-      }
-      if (errors.count() > 0) {
-        throw new IllegalStateException("scan produced extraction errors: " + errors.first());
       }
       ScanProgress.Snapshot snapshot = progress.snapshot();
       EvidenceWriter.EvidenceResult result = evidence == null
