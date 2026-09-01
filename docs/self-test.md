@@ -13,6 +13,10 @@ limitations under the License.
 
 # Warehouse Self-Test
 
+The post-change validation gate is the `warehouse-validation` skill. It runs
+the static Maven/Helm/Compose checks and then this runtime baseline plus the
+caller simulations below.
+
 The repository has one Kubernetes smoke entry point for the supported runtime
 path:
 
@@ -72,3 +76,35 @@ requires successful terminal phases, zero scan errors, `ACTIVE` scan layers,
 and at least one matching layer document; it does not require these historical
 counts. The script never reads or writes legacy `astro_*` indices.
 
+## Caller Validation
+
+The post-change skill runs both caller paths. Run the caller smoke script
+directly when diagnosing a submission contract or repeating one path:
+
+```bash
+# Asset submission: ScanRequest and MOC discovery in atlas-warehouse.
+CALLER=asset KEEP_REQUESTS=1 bash scripts/warehouse-caller-smoke-test.sh
+
+# Workspace submission: remote ScanRequest in astro-data-workspace.
+CALLER=workspace KEEP_REQUESTS=1 bash scripts/warehouse-caller-smoke-test.sh
+```
+
+The requests carry the same labels used by the two callers and are created in
+their respective namespaces. Asset defaults use the MinIO smoke fixture and
+`atlas-evidence-smoke`. Workspace defaults use the Euclid BGMOD FITS fixture
+and `workspace-evidence`; when `WORKSPACE_SOURCE_SECRET` is not set, the
+script discovers the first connector Secret by the
+`astro.zhejianglab.org/connector-credential=true` label and reads its
+`s3-endpoint` key. Override `WORKSPACE_SOURCE_SECRET`,
+`WORKSPACE_S3_ENDPOINT`, `WORKSPACE_S3_BUCKET`, and `WORKSPACE_S3_PREFIX` for a
+specific Workspace connector or fixture. The script references Secret keys by
+name and never prints credential values.
+
+Successful caller checks verify that each request reaches `SUCCEEDED`, the
+scanner reports a Job, evidence path, source snapshot, discovered files,
+coverage, and zero errors, and the expected `ACTIVE` layer document exists.
+MOC discovery reports a Job, evidence path, and candidates without creating a
+scan layer. Set
+`KEEP_REQUESTS=0` (the default) to remove successful request resources after
+the assertions; failed requests remain for diagnosis. MOC discovery is only an
+Asset path because Workspace submits remote scans, not public-catalog intent.

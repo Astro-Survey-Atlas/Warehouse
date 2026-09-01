@@ -80,7 +80,10 @@ support.
 The repeatable Kubernetes smoke baseline is documented in
 [`docs/self-test.md`](docs/self-test.md) and runs from
 `scripts/warehouse-smoke-test.sh`. It covers one S3 scan, one local PVC scan,
-and one evidence-only MOC discovery.
+and one evidence-only MOC discovery. Cross-project submission checks run from
+`scripts/warehouse-caller-smoke-test.sh`: Asset submits a ScanRequest and
+MocDiscoveryRequest in `atlas-warehouse`; Workspace submits a remote
+ScanRequest in `astro-data-workspace`.
 
 ## Verification
 
@@ -92,9 +95,14 @@ mvn -B verify
 mvn -B -Pquality verify
 helm lint deploy/helm/atlas-warehouse-infra
 helm lint deploy/helm/atlas-warehouse-operator
+helm template atlas-warehouse deploy/helm/atlas-warehouse-infra >/dev/null
+helm template atlas-warehouse-operator deploy/helm/atlas-warehouse-operator --include-crds >/dev/null
 docker compose -f deploy/compose/compose.yaml config
 scripts/sync-index-mappings.sh --check
+bash -n scripts/warehouse-smoke-test.sh scripts/warehouse-caller-smoke-test.sh
 bash scripts/warehouse-smoke-test.sh
+CALLER=asset bash scripts/warehouse-caller-smoke-test.sh
+CALLER=workspace bash scripts/warehouse-caller-smoke-test.sh
 ```
 
 Keep tests at the highest useful public interface. Any stable product rule

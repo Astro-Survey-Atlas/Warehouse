@@ -56,9 +56,16 @@ reserved but not implemented.
 - Add tests at the highest useful interface and verify behavior rather than
   private class shape.
 - Update the relevant contract and ADR whenever a stable product rule changes.
+- After any implementation, contract, deployment, or documentation change,
+  invoke the `warehouse-validation` skill. It runs the static regression suite
+  and, when a configured cluster is available, simulates Asset submissions in
+  `atlas-warehouse` and Workspace submissions in `astro-data-workspace`.
 
 ## Completion Standard
 
 A feature is complete only when its contract is documented, invalid public
 inputs fail before execution, normal and failure behavior are tested, evidence
-and precision invariants hold, and `mvn test` passes from the repository root.
+and precision invariants hold, `mvn test` passes from the repository root, and
+the `warehouse-validation` result is reported. If no configured Kubernetes
+cluster is available, report the caller smoke checks as skipped rather than
+claiming end-to-end validation.

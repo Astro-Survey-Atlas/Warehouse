@@ -208,13 +208,44 @@ print_moc_status() {
   printf '\n'
 }
 
+check_scan_summary() {
+  local name="$1"
+  local job evidence snapshot discovered coverage errors
+  job="$(kubectl -n "$namespace" get scanrequest "$name" -o jsonpath='{.status.jobName}')"
+  evidence="$(kubectl -n "$namespace" get scanrequest "$name" -o jsonpath='{.status.summary.evidencePath}')"
+  snapshot="$(kubectl -n "$namespace" get scanrequest "$name" -o jsonpath='{.status.summary.sourceSnapshotSha256}')"
+  discovered="$(kubectl -n "$namespace" get scanrequest "$name" -o jsonpath='{.status.summary.discoveredFileCount}')"
+  coverage="$(kubectl -n "$namespace" get scanrequest "$name" -o jsonpath='{.status.summary.coverageRecordCount}')"
+  errors="$(kubectl -n "$namespace" get scanrequest "$name" -o jsonpath='{.status.summary.errorCount}')"
+  if [[ -z "$job" || -z "$evidence" || -z "$snapshot" ||
+    ! "$discovered" =~ ^[1-9][0-9]*$ || ! "$coverage" =~ ^[1-9][0-9]*$ ||
+    "$errors" != 0 ]]; then
+    printf 'scan summary invalid for %s: job=%s evidence=%s snapshot=%s discovered=%s coverage=%s errors=%s\n' \
+      "$name" "$job" "$evidence" "$snapshot" "$discovered" "$coverage" "$errors" >&2
+    return 1
+  fi
+}
+
+check_moc_summary() {
+  local name="$1"
+  local job evidence candidates
+  job="$(kubectl -n "$namespace" get mocdiscoveryrequest "$name" -o jsonpath='{.status.jobName}')"
+  evidence="$(kubectl -n "$namespace" get mocdiscoveryrequest "$name" -o jsonpath='{.status.evidencePath}')"
+  candidates="$(kubectl -n "$namespace" get mocdiscoveryrequest "$name" -o jsonpath='{.status.candidateCount}')"
+  if [[ -z "$job" || -z "$evidence" || ! "$candidates" =~ ^[1-9][0-9]*$ ]]; then
+    printf 'MOC summary invalid for %s: job=%s evidence=%s candidates=%s\n' \
+      "$name" "$job" "$evidence" "$candidates" >&2
+    return 1
+  fi
+}
+
 check_index_layers() {
   local check_pod="warehouse-selftest-es-${run_id}"
   local check_script
   check_script=$(cat <<EOF
 set -eu
 for layer in ${s3_layer} ${local_layer}; do
-  response="\$(curl -fsS -G "${es_endpoint}/ast_layer_index_v1/_count" --data-urlencode "q=layer_id:\$layer")"
+  response="\$(curl -fsS -G "${es_endpoint}/ast_layer_index_v1/_count" --data-urlencode "q=layer_id:\$layer AND state:ACTIVE")"
   count="\$(printf '%s' "\$response" | sed -n 's/.*"count":\([0-9][0-9]*\).*/\1/p')"
   test -n "\$count" && test "\$count" -gt 0
   printf '%s index-count=%s\\n' "\$layer" "\$count"
@@ -237,6 +268,12 @@ print_moc_status "$moc_request"
 [[ "$(kubectl -n "$namespace" get scanrequest "$s3_request" -o jsonpath='{.status.phase}')" == SUCCEEDED ]] || result=1
 [[ "$(kubectl -n "$namespace" get scanrequest "$local_request" -o jsonpath='{.status.phase}')" == SUCCEEDED ]] || result=1
 [[ "$(kubectl -n "$namespace" get mocdiscoveryrequest "$moc_request" -o jsonpath='{.status.phase}')" == SUCCEEDED ]] || result=1
+
+if [[ "$result" == 0 ]]; then
+  check_scan_summary "$s3_request" || result=1
+  check_scan_summary "$local_request" || result=1
+  check_moc_summary "$moc_request" || result=1
+fi
 
 if [[ "$result" == 0 ]]; then
   check_index_layers || result=1
