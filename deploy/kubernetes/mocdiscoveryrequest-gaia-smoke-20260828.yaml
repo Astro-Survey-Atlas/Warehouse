@@ -18,7 +18,7 @@ metadata:
     atlas.zhejianglab.org/track-survey: gaia
     atlas.zhejianglab.org/track-task: moc-discovery-smoke-20260828
 spec:
-  policyRef: cds-public-moc-v1
+  policyRef: cds-public-moc-v2
   query:
     surveyName: Gaia
     releaseHint: DR3

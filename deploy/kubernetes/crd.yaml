@@ -93,6 +93,20 @@ spec:
                           default: /var/lib/atlas-evidence
                         readOnly:
                           type: boolean
+                    sourceVolume:
+                      type: object
+                      required:
+                        - claimName
+                      properties:
+                        claimName:
+                          type: string
+                          minLength: 1
+                        mountPath:
+                          type: string
+                          default: /data
+                        subPath:
+                          type: string
+                          minLength: 1
                 credentials:
                   type: object
                   properties:
@@ -189,7 +203,7 @@ spec:
                     surveyName: { type: string, minLength: 1, maxLength: 200 }
                     releaseHint: { type: string, maxLength: 200 }
                     productHint: { type: string, maxLength: 200 }
-                policyRef: { type: string, enum: [cds-public-moc-v1] }
+                policyRef: { type: string, enum: [cds-public-moc-v2] }
             status:
               type: object
               properties:
@@ -200,7 +214,26 @@ spec:
                 observedGeneration: { type: string }
                 evidencePath: { type: string }
                 candidateCount: { type: integer }
-                probeCount: { type: integer }
+                reviewSummary:
+                  type: object
+                  required: [schemaVersion, truncated, summaryTruncated, candidates]
+                  properties:
+                    schemaVersion: { type: integer, enum: [2] }
+                    truncated: { type: boolean }
+                    summaryTruncated: { type: boolean }
+                    searchRecordCount: { type: integer, minimum: 0 }
+                    candidates:
+                      type: array
+                      maxItems: 50
+                      items:
+                        type: object
+                        required: [candidateId]
+                        properties:
+                          candidateId: { type: string, maxLength: 2048 }
+                          title: { type: string, maxLength: 2048 }
+                          recordUrl: { type: string, maxLength: 2048 }
+                          mocUrl: { type: string, maxLength: 2048 }
+                          hipsUrl: { type: string, maxLength: 2048 }
                 lastTransitionTime:
                   type: string
                   format: date-time

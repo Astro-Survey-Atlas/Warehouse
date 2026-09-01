@@ -110,8 +110,8 @@ sequenceDiagram
   O-->>Caller: phase, Job, evidence path, counts
 ```
 
-`MocDiscoveryRequest` is intent-only. The fixed `cds-public-moc-v1` policy
-controls hosts, request count, response bytes, candidate/probe limits, and
+`MocDiscoveryRequest` is intent-only. The fixed `cds-public-moc-v2` policy
+controls hosts, request count, response bytes, candidate limits, and
 timeout. A zero candidate count is a bounded upstream result, not proof that a
 survey has no public MOC. Assets decides whether reviewed evidence becomes a
 public MOC/release artifact. A completed Job emits only a compact count marker

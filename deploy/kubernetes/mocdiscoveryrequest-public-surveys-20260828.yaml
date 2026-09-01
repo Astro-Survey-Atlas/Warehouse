@@ -18,7 +18,7 @@ metadata:
     atlas.zhejianglab.org/track-survey: skymapper
     atlas.zhejianglab.org/track-task: public-moc-discovery-20260828
 spec:
-  policyRef: cds-public-moc-v1
+  policyRef: cds-public-moc-v2
   query:
     surveyName: SkyMapper
     releaseHint: DR4
@@ -33,7 +33,7 @@ metadata:
     atlas.zhejianglab.org/track-survey: kids
     atlas.zhejianglab.org/track-task: public-moc-discovery-20260828
 spec:
-  policyRef: cds-public-moc-v1
+  policyRef: cds-public-moc-v2
   query:
     surveyName: KiDS
     releaseHint: DR5
@@ -48,7 +48,7 @@ metadata:
     atlas.zhejianglab.org/track-survey: vista
     atlas.zhejianglab.org/track-task: public-moc-discovery-20260828
 spec:
-  policyRef: cds-public-moc-v1
+  policyRef: cds-public-moc-v2
   query:
     surveyName: VISTA VIKING
     releaseHint: VIKING
@@ -63,7 +63,7 @@ metadata:
     atlas.zhejianglab.org/track-survey: decals
     atlas.zhejianglab.org/track-task: public-moc-discovery-20260828
 spec:
-  policyRef: cds-public-moc-v1
+  policyRef: cds-public-moc-v2
   query:
     surveyName: DECaLS
     releaseHint: DR5

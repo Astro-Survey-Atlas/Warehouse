@@ -36,6 +36,34 @@ helm upgrade --install atlas-warehouse ./deploy/helm/atlas-warehouse-infra \
   --namespace atlas-warehouse --create-namespace --wait --timeout 15m
 ```
 
+For local catalog or image sources, declare a Warehouse-owned, read-only source
+volume in the infrastructure release. The PVC is namespace-local to each
+`ScanRequest`; do not pass a node name, host path, NFS server, or export path in
+the request itself. For an NFS-backed source, supply deployment-specific values
+when installing or upgrading the infra chart:
+
+```yaml
+sourceVolumes:
+  - claimName: atlas-source-catalogs
+    capacity: 1800Gi
+    accessModes: [ReadOnlyMany]
+    nfs:
+      server: nfs.example.invalid
+      path: /exports/catalogs
+```
+
+```text
+helm upgrade --install atlas-warehouse ./deploy/helm/atlas-warehouse-infra \
+  --namespace atlas-warehouse --create-namespace --wait --timeout 15m \
+  -f /path/to/source-volumes.yaml
+```
+
+An existing claim may instead be listed with `existingClaim: true`, but it must
+already carry the `atlas.zhejianglab.org/scanner-source=true` label. The
+Operator verifies that the claim exists, is `Bound`, and has that label before
+creating a Job. Assets only references this claim by name and an optional
+relative `basePath`; it never creates or mutates the claim.
+
 Enable the chart-owned Kafka broker only for an event-driven or future Flink
 deployment:
 
@@ -69,7 +97,7 @@ not a current Scanner requirement.
 ## Operator
 
 The Operator also watches the namespaced `MocDiscoveryRequest` CRD. Discovery
-requests use the fixed `cds-public-moc-v1` policy, create an independent
+requests use the fixed `cds-public-moc-v2` policy, create an independent
 evidence-only Job, and never write the Warehouse `ast_*` indices or publish a
 CoverageLayer. The checked-in smoke request exercises the Gaia/DR3 intent:
 
@@ -82,6 +110,10 @@ kubectl -n atlas-warehouse get job -l atlas.zhejianglab.org/moc-discovery=true
 The request status exposes the Job name and evidence path. A successful Job
 means the bounded execution and evidence write completed; candidate/probe
 counts still reflect the upstream CDS response and may legitimately be zero.
+Zero is not evidence that a survey lacks a public MOC. The discovery worker
+uses the CDS MOCServer filter API (not ADQL), records an empty or malformed
+upstream response as evidence, and only treats a parsed, non-truncated empty
+record set as a valid zero-result query.
 
 ## Build Images
 
@@ -141,9 +173,10 @@ is eventually handled by its TTL. Delete the ScanRequest to garbage-collect
 owned ConfigMaps and Jobs.
 
 The first implementation supports one-shot scans only. It does not schedule
-recurring scans, read Secret values, write Elasticsearch from reconcile, or
-mount local filesystem sources. Local source Jobs need a future explicit PVC
-or host-path policy rather than an implicit host mount.
+recurring scans, read Secret values, or write Elasticsearch from reconcile.
+Local source Jobs use the explicit `scanner.sourceVolume` PVC contract above:
+the source `rootPath` is relative to the read-only `/data` mount (and optional
+PVC `subPath`). Implicit node mounts and arbitrary host paths are unsupported.
 
 Persisted scans require `spec.scanner.evidence.claimName`. The Operator mounts
 that PVC at `mountPath` (default `/var/lib/atlas-evidence`) and rejects a plan

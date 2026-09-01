@@ -74,6 +74,13 @@ back to a center point.
   absent source order to 8.
 - Evidence output is required for persisted scans and optional only for
   `--memory` diagnostics.
+- Local sources in Kubernetes require `scanner.sourceVolume`. It references an
+  existing, namespace-local PVC carrying
+  `atlas.zhejianglab.org/scanner-source=true` and in `Bound` phase; Jobs mount
+  it read-only. The local `source.location.rootPath` must remain below the
+  declared absolute mount (normally `/data/<relative-path>`), and an optional
+  PVC `subPath` selects a directory inside the claim. Assets and the Operator
+  reject node-specific host paths and path traversal.
 - In a Kubernetes `ScanRequest`, `spec.scanner.evidence.claimName` must mount
   the evidence root (default `/var/lib/atlas-evidence`); the Operator rejects
   an output path outside that root. The Claim is namespace-local and is not an

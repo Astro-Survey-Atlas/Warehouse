@@ -27,6 +27,8 @@ public final class OperatorConstants {
   public static final String TRACKING_LABEL_PREFIX = "atlas.zhejianglab.org/track-";
   public static final String PLAN_HASH_ANNOTATION = "atlas.zhejianglab.org/plan-sha256";
   public static final String EXECUTION_HASH_ANNOTATION = "atlas.zhejianglab.org/execution-sha256";
+  public static final String SCANNER_SOURCE_LABEL = "atlas.zhejianglab.org/scanner-source";
+  public static final String SCANNER_SOURCE_LABEL_VALUE = "true";
   public static final String PLAN_PATH = "/etc/atlas/scan/plan.json";
 
   private OperatorConstants() {}

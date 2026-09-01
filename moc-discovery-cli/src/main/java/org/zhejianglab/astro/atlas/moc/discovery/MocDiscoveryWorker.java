@@ -23,9 +23,14 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -43,60 +48,77 @@ public final class MocDiscoveryWorker {
   }
 
   public Map<String, Object> run(DiscoveryExecutionPlan plan) {
+    return run(plan, null);
+  }
+
+  public Map<String, Object> run(DiscoveryExecutionPlan plan, Path evidenceRoot) {
     long started = System.nanoTime();
     List<Map<String, Object>> requests = new ArrayList<>();
     List<Map<String, Object>> candidates = new ArrayList<>();
     long bytes = 0;
-    FetchResult search = fetch(plan.searchUri(), policy.maxObjectBytes(), requests);
+    FetchResult search = fetch(plan.searchUri(), policy.maxObjectBytes(), requests, evidenceRoot);
     bytes += number(search.record().get("bytes"));
-    if (Boolean.TRUE.equals(search.record().get("ok"))) candidates.addAll(extractCandidates(search.body(), policy.maxCandidates()));
-    int probeCount = 0;
-    List<Map<String, Object>> probes = new ArrayList<>();
-    for (Map<String, Object> candidate : candidates) {
-      if (probeCount >= policy.maxProbes() || requests.size() >= policy.maxRequests() || bytes >= policy.maxTaskBytes() || elapsed(started).compareTo(policy.taskTimeout()) >= 0) break;
-      String candidateId = string(candidate.get("candidateId"));
-      for (String key : List.of("recordUrl", "mocUrl", "hipsUrl")) {
-        String value = string(candidate.get(key));
-        if (value == null || value.isBlank()) continue;
-        URI uri;
-        try { uri = URI.create(value); } catch (IllegalArgumentException exception) { probes.add(probeError(candidateId, key, value, "invalid-url")); continue; }
-        if (!policy.allows(uri)) { probes.add(probeError(candidateId, key, value, "url-not-allowlisted")); continue; }
-        FetchResult response = fetch(uri, policy.maxObjectBytes(), requests);
-        bytes += number(response.record().get("bytes")); probeCount++;
-        Map<String, Object> probe = new LinkedHashMap<>(); probe.put("candidateId", candidateId); probe.put("kind", key); probe.put("url", uri.toString()); probe.put("status", response.record().get("status")); probe.put("bytes", response.record().get("bytes")); probe.put("ok", response.record().get("ok"));
-        if (Boolean.TRUE.equals(response.record().get("ok"))) probe.put("validation", validateMoc(response.body(), uri));
-        else if (response.record().get("error") != null) probe.put("error", response.record().get("error"));
-        probes.add(probe);
-        if (probeCount >= policy.maxProbes()) break;
-      }
+    int recordCount = 0;
+    if (Boolean.TRUE.equals(search.record().get("ok"))) {
+      ExtractionResult extracted = extractCandidates(search.text(), policy, search.record());
+      candidates.addAll(extracted.candidates());
+      recordCount = extracted.recordCount();
     }
+    // Candidate acquisition is intentionally owned by the Assets build adapter.
+    // Discovery only returns the complete bounded candidate set and never turns
+    // a small probe sample into the set of buildable products.
+    List<Map<String, Object>> probes = new ArrayList<>();
     Map<String, Object> result = new LinkedHashMap<>();
-    result.put("schemaVersion", 1); result.put("kind", "moc-discovery-evidence"); result.put("generatedAt", Instant.now().toString());
+    result.put("schemaVersion", 2); result.put("kind", "moc-discovery-evidence"); result.put("generatedAt", Instant.now().toString());
     result.put("policy", policy.id()); result.put("intent", Map.of("surveyName", plan.intent().surveyName(), "releaseHint", plan.intent().releaseHint() == null ? "" : plan.intent().releaseHint(), "productHint", plan.intent().productHint() == null ? "" : plan.intent().productHint()));
-    result.put("search", Map.of("url", plan.searchUri().toString(), "candidateCount", candidates.size())); result.put("candidates", candidates); result.put("probes", probes); result.put("probeCount", probes.size()); result.put("candidateCount", candidates.size()); result.put("requests", requests);
+    result.put("search", Map.of("url", plan.searchUri().toString(), "recordCount", recordCount, "candidateCount", candidates.size())); result.put("candidates", candidates); result.put("probes", probes); result.put("probeCount", probes.size()); result.put("candidateCount", candidates.size()); result.put("requests", requests);
     result.put("limits", Map.of("maxCandidates", policy.maxCandidates(), "maxProbes", policy.maxProbes(), "maxRequests", policy.maxRequests(), "maxObjectBytes", policy.maxObjectBytes(), "maxTaskBytes", policy.maxTaskBytes(), "maxOrder", policy.maxOrder()));
-    result.put("truncated", requests.size() >= policy.maxRequests() || bytes >= policy.maxTaskBytes() || elapsed(started).compareTo(policy.taskTimeout()) >= 0);
+    result.put("truncated", recordCount >= policy.maxCandidates()
+        || bytes >= policy.maxTaskBytes()
+        || elapsed(started).compareTo(policy.taskTimeout()) >= 0);
     result.put("bytes", bytes); result.put("spatialOnly", true); result.put("timeProjectionNote", "STMOC time axes are evidence-only; any spatial use must record loss of temporal information.");
     return result;
   }
 
-  private FetchResult fetch(URI uri, long maxBytes, List<Map<String, Object>> requests) {
+  private FetchResult fetch(URI uri, long maxBytes, List<Map<String, Object>> requests, Path evidenceRoot) {
     Map<String, Object> record = new LinkedHashMap<>(); record.put("url", uri.toString());
-    if (!policy.allows(uri)) { record.put("ok", false); record.put("error", "url-not-allowlisted"); requests.add(record); return new FetchResult(record, ""); }
-    if (requests.size() >= policy.maxRequests()) { record.put("ok", false); record.put("error", "request-limit"); requests.add(record); return new FetchResult(record, ""); }
-    String body = "";
+    if (!policy.allows(uri)) { record.put("ok", false); record.put("error", "url-not-allowlisted"); requests.add(record); return new FetchResult(record, new byte[0]); }
+    if (requests.size() >= policy.maxRequests()) { record.put("ok", false); record.put("error", "request-limit"); requests.add(record); return new FetchResult(record, new byte[0]); }
+    byte[] body = new byte[0];
     try {
       HttpRequest request = HttpRequest.newBuilder(uri).timeout(policy.requestTimeout()).header("Accept", "application/json,application/fits,text/plain,application/xml").GET().build();
       HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-      byte[] bytes = readBounded(response.body(), maxBytes);
-      body = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
-      record.put("status", response.statusCode()); record.put("bytes", bytes.length); record.put("ok", response.statusCode() >= 200 && response.statusCode() < 300 && bytes.length > 0);
+      body = readBounded(response.body(), maxBytes);
+      record.put("status", response.statusCode()); record.put("bytes", body.length); record.put("ok", response.statusCode() >= 200 && response.statusCode() < 300 && body.length > 0);
+      if (response.statusCode() >= 200 && response.statusCode() < 300 && body.length == 0) record.put("error", "empty-response");
+      response.headers().firstValue("content-type").filter(value -> !value.isBlank()).ifPresent(value -> record.put("contentType", value));
+      if (body.length > 0) {
+        String hash = sha256(body);
+        record.put("sha256", hash);
+        if (evidenceRoot != null) record.put("evidenceRef", retainResponse(evidenceRoot, requests.size(), hash, body));
+      }
+    } catch (IllegalStateException exception) {
+      throw exception;
     } catch (Exception exception) { record.put("ok", false); record.put("bytes", 0); record.put("error", exception.getClass().getSimpleName() + ": " + exception.getMessage()); }
     requests.add(record);
     return new FetchResult(record, body);
   }
 
-  private record FetchResult(Map<String, Object> record, String body) {}
+  private record FetchResult(Map<String, Object> record, byte[] body) {
+    String text() { return new String(body, StandardCharsets.UTF_8); }
+  }
+
+  private static String retainResponse(Path evidenceRoot, int requestIndex, String hash, byte[] body) {
+    try {
+      Path responses = evidenceRoot.resolve("responses");
+      Files.createDirectories(responses);
+      String name = String.format(java.util.Locale.ROOT, "%02d-%s.bin", requestIndex + 1, hash.substring(0, 16));
+      Files.write(responses.resolve(name), body);
+      return "responses/" + name;
+    } catch (IOException exception) {
+      throw new IllegalStateException("could not retain MOC discovery response evidence", exception);
+    }
+  }
 
   private static byte[] readBounded(InputStream stream, long maxBytes) throws IOException {
     try (InputStream input = stream; ByteArrayOutputStream output = new ByteArrayOutputStream()) {
@@ -106,7 +128,16 @@ public final class MocDiscoveryWorker {
     }
   }
 
-  private static List<Map<String, Object>> extractCandidates(String body, int limit) {
+  private static List<String> probeKeys(Map<String, Object> candidate) {
+    if (candidate.containsKey("mocUrl")) return List.of("mocUrl");
+    if (candidate.containsKey("hipsUrl")) return List.of("hipsUrl");
+    if (candidate.containsKey("recordUrl")) return List.of("recordUrl");
+    return List.of();
+  }
+
+  private record ExtractionResult(List<Map<String, Object>> candidates, int recordCount) {}
+
+  private static ExtractionResult extractCandidates(String body, DiscoveryPolicy policy, Map<String, Object> request) {
     List<Map<String, Object>> result = new ArrayList<>();
     try {
       JsonNode root = MAPPER.readTree(body);
@@ -118,20 +149,57 @@ public final class MocDiscoveryWorker {
         for (JsonNode nestedData : root.findValues("data")) if (nestedData.isArray() && nestedData != directData) nestedData.forEach(dataNodes::add);
       }
       Iterator<JsonNode> nodes = dataNodes.iterator();
-      while (nodes.hasNext() && result.size() < limit) { JsonNode node = nodes.next(); if (!node.isObject()) continue; Map<String, Object> candidate = new LinkedHashMap<>(); String id = first(node, "obs_id", "id", "ivoid", "dataproduct_id"); candidate.put("candidateId", id == null ? "candidate-" + result.size() : id); put(candidate, "recordUrl", node, "access_url", "accessURL", "record_url", "recordUrl", "url"); put(candidate, "mocUrl", node, "moc_url", "mocUrl", "moc", "coverage_url"); put(candidate, "hipsUrl", node, "hips_service_url", "hipsUrl", "hips_service", "hips"); put(candidate, "title", node, "obs_title", "title", "obs_collection"); if (candidate.containsKey("mocUrl") || candidate.containsKey("hipsUrl") || candidate.containsKey("recordUrl")) result.add(candidate); }
-    } catch (Exception ignored) { /* raw response remains in request evidence */ }
-    return result;
+      int recordCount = 0;
+      while (nodes.hasNext() && recordCount < policy.maxCandidates()) {
+        JsonNode node = nodes.next();
+        if (!node.isObject()) continue;
+        recordCount++;
+        Map<String, Object> candidate = new LinkedHashMap<>();
+        String id = first(node, "ID", "creator_did", "publisher_did", "obs_id", "id", "ivoid", "dataproduct_id");
+        String recordUrl = first(node, "record_url", "recordUrl", "access_url", "accessURL", "web_access_url", "url");
+        String mocUrl = first(node, "moc_access_url", "moc_url", "mocUrl", "moc", "coverage_url");
+        String hipsUrl = first(node, "hips_service_url", "hipsUrl", "hips_service", "hips");
+        if (mocUrl == null && id != null) mocUrl = DiscoveryPlanBuilder.spatialMocUrl(id, policy.maxOrder());
+        if (recordUrl == null && id != null && (mocUrl != null || hipsUrl != null)) recordUrl = DiscoveryPlanBuilder.recordUrl(id);
+        if (mocUrl == null && hipsUrl != null) mocUrl = hipsMocUrl(hipsUrl);
+        candidate.put("candidateId", id == null ? "candidate-" + result.size() : id);
+        if (recordUrl != null) candidate.put("recordUrl", recordUrl);
+        if (mocUrl != null) candidate.put("mocUrl", mocUrl);
+        if (hipsUrl != null) candidate.put("hipsUrl", hipsUrl);
+        put(candidate, "title", node, "obs_title", "title", "obs_collection");
+        result.add(candidate);
+      }
+      return new ExtractionResult(result, recordCount);
+    } catch (Exception exception) {
+      request.put("ok", false);
+      request.put("error", "invalid-json-response");
+    }
+    return new ExtractionResult(result, 0);
   }
 
   private static Map<String, Object> validateMoc(String body, URI uri) {
-    String upper = body.toUpperCase(java.util.Locale.ROOT); Map<String, Object> result = new LinkedHashMap<>(); result.put("format", uri.getPath().toLowerCase().endsWith(".fits") || upper.contains("SIMPLE  =") ? "fits-or-fits-text" : "json-or-text"); result.put("icrs", upper.contains("ICRS") || upper.contains("EQUATORIAL")); result.put("nested", upper.contains("NUNIQ") || upper.contains("NESTED")); result.put("mocDimension", upper.contains("MOC") && !upper.contains("STMOC")); result.put("stmoc", upper.contains("STMOC") || upper.contains("TIMESYS") || upper.contains("TIME"));
-    int max = -1; java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?:MOCORDER|ORDER|MAXORDER)\\s*[^0-9]{0,8}(\\d+)").matcher(upper); while (matcher.find()) max = Math.max(max, Integer.parseInt(matcher.group(1))); result.put("maxOrder", max); result.put("acceptedSpatialMoc", Boolean.TRUE.equals(result.get("icrs")) && Boolean.TRUE.equals(result.get("nested")) && Boolean.TRUE.equals(result.get("mocDimension")) && max >= 0 && max <= 12); if (Boolean.TRUE.equals(result.get("stmoc"))) result.put("timeLoss", "spatial projection discards temporal axis"); return result;
+    String upper = body.toUpperCase(java.util.Locale.ROOT); Map<String, Object> result = new LinkedHashMap<>(); result.put("format", uri.getPath().toLowerCase().endsWith(".fits") || upper.contains("SIMPLE  =") ? "fits-or-fits-text" : "json-or-text");
+    boolean celestial = upper.contains("ICRS") || upper.contains("EQUATORIAL")
+        || java.util.regex.Pattern.compile("COORDSYS\\s*=\\s*['\"]?C(?:\\s|['\"]|/|$)").matcher(upper).find();
+    result.put("icrs", celestial); result.put("nested", upper.contains("NUNIQ") || upper.contains("NESTED")); result.put("mocDimension", upper.contains("MOC") && !upper.contains("STMOC")); result.put("stmoc", upper.contains("STMOC") || upper.contains("TIMESYS") || upper.contains("TIME"));
+    int max = -1; java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?:MOCORDER|MOCORD_S|ORDER|MAXORDER)\\s*=?\\s*(\\d+)").matcher(upper); while (matcher.find()) max = Math.max(max, Integer.parseInt(matcher.group(1))); result.put("maxOrder", max); result.put("acceptedSpatialMoc", Boolean.TRUE.equals(result.get("icrs")) && Boolean.TRUE.equals(result.get("nested")) && Boolean.TRUE.equals(result.get("mocDimension")) && max >= 0 && max <= 12); if (Boolean.TRUE.equals(result.get("stmoc"))) result.put("timeLoss", "spatial projection discards temporal axis"); return result;
   }
 
-  private static Map<String, Object> probeError(String id, String kind, String url, String error) { return Map.of("candidateId", id, "kind", kind, "url", url, "ok", false, "error", error); }
+  private static Map<String, Object> probeError(String id, String kind, String url, String error) { return Map.of("probeId", sha256(id + "\n" + kind + "\n" + url), "candidateId", id, "kind", kind, "url", url, "ok", false, "error", error); }
+  private static void copy(Map<String, Object> source, Map<String, Object> target, String... keys) { for (String key : keys) if (source.containsKey(key)) target.put(key, source.get(key)); }
+  private static String sha256(String value) { return sha256(value.getBytes(StandardCharsets.UTF_8)); }
+  private static String sha256(byte[] value) {
+    try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value)); }
+    catch (java.security.NoSuchAlgorithmException exception) { throw new IllegalStateException("SHA-256 is unavailable", exception); }
+  }
   private static void put(Map<String, Object> target, String targetKey, JsonNode node, String... names) { String value = first(node, names); if (value != null && !value.isBlank()) target.put(targetKey, value); }
   private static String first(JsonNode node, String... keys) { for (String key : keys) { JsonNode value = node.get(key); if (value != null && value.isValueNode() && !value.asText().isBlank()) return value.asText(); } return null; }
   private static String string(Object value) { return value instanceof String ? (String) value : null; }
   private static long number(Object value) { return value instanceof Number ? ((Number) value).longValue() : 0; }
   private static Duration elapsed(long started) { return Duration.ofNanos(System.nanoTime() - started); }
+
+  private static String hipsMocUrl(String value) {
+    String normalized = value.replaceAll("/+$", "");
+    return normalized.endsWith("/Moc.fits") ? normalized : normalized + "/Moc.fits";
+  }
 }

@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ScanRequestSpecParserTest {
   @Test
@@ -30,7 +31,8 @@ class ScanRequestSpecParserTest {
     Map<String, Object> spec = new LinkedHashMap<>();
     spec.put("plan", mapper.convertValue(OperatorTestFixtures.localPlan(null), Map.class));
     spec.put("scanner", Map.of("evidence", Map.of("claimName", "atlas-evidence",
-        "mountPath", "/var/lib/atlas-evidence")));
+        "mountPath", "/var/lib/atlas-evidence"),
+        "sourceVolume", Map.of("claimName", "atlas-source", "mountPath", "/survey")));
     resource.setAdditionalProperty("spec", spec);
 
     ScanRequestSpecParser.ParsedScanRequest parsed = new ScanRequestSpecParser().parse(resource, "scanner:default");
@@ -39,6 +41,42 @@ class ScanRequestSpecParserTest {
     assertEquals("scanner:default", parsed.spec().scanner().image());
     assertEquals("atlas-evidence", parsed.spec().scanner().evidence().claimName());
     assertEquals("/survey", parsed.spec().plan().source().location().rootPath());
+    assertEquals("atlas-source", parsed.spec().scanner().sourceVolume().claimName());
+  }
+
+  @Test
+  void rejectsLocalPlanWithoutSourceVolume() {
+    ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
+    var resource = OperatorTestFixtures.request("missing-source-volume");
+    resource.setAdditionalProperty("spec", Map.of(
+        "plan", mapper.convertValue(OperatorTestFixtures.localPlan(null), Map.class),
+        "scanner", Map.of("evidence", Map.of("claimName", "atlas-evidence"))));
+
+    OperatorValidationException exception = assertThrows(OperatorValidationException.class,
+        () -> new ScanRequestSpecParser().parse(resource, "scanner:default"));
+
+    assertTrue(exception.getMessage().contains("scanner.sourceVolume is required"));
+  }
+
+  @Test
+  void rejectsSourceVolumeOnObjectPlan() {
+    ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
+    var resource = OperatorTestFixtures.request("object-source-volume");
+    Map<String, Object> plan = mapper.convertValue(OperatorTestFixtures.localPlan(null), Map.class);
+    Map<String, Object> source = (Map<String, Object>) plan.get("source");
+    Map<String, Object> connector = (Map<String, Object>) source.get("connector");
+    connector.put("type", "s3");
+    connector.put("endpoint", "https://object.example");
+    Map<String, Object> location = (Map<String, Object>) source.get("location");
+    location.remove("rootPath");
+    location.put("bucket", "data");
+    resource.setAdditionalProperty("spec", Map.of("plan", plan,
+        "scanner", Map.of("sourceVolume", Map.of("claimName", "atlas-source"))));
+
+    OperatorValidationException exception = assertThrows(OperatorValidationException.class,
+        () -> new ScanRequestSpecParser().parse(resource, "scanner:default"));
+
+    assertTrue(exception.getMessage().contains("scanner.sourceVolume is only valid"));
   }
 
   @Test

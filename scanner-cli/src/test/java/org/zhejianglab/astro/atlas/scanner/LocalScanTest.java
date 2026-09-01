@@ -68,6 +68,22 @@ class LocalScanTest {
   }
 
   @Test
+  void doesNotFollowSymlinkedInputFiles() throws Exception {
+    Path target = tempDir.resolve("target.csv");
+    Files.writeString(target, "ra,dec\n150.0,1.0\n", StandardCharsets.UTF_8);
+    Path link = tempDir.resolve("linked.csv");
+    try {
+      Files.createSymbolicLink(link, target);
+    } catch (UnsupportedOperationException exception) {
+      return;
+    }
+    InMemoryIndex index = new InMemoryIndex();
+    ScanSummary summary = new ScanService(new LocalSourceAdapter(), index).scan(catalogPlan(tempDir));
+    assertEquals(1, summary.discoveredFileCount());
+    assertTrue(index.files().stream().noneMatch(file -> file.fileName().equals("linked.csv")));
+  }
+
+  @Test
   void scansFitsAndCatalogAndDeduplicatesCatalogCells() throws Exception {
     writeFits(tempDir.resolve("image.fits"));
     Files.writeString(tempDir.resolve("catalog.csv"), "ra,dec\n180.25,-2.5\n180.25,-2.5\n", StandardCharsets.UTF_8);

@@ -20,7 +20,8 @@ public record ScannerSpec(
     Long activeDeadlineSeconds,
     Integer ttlSecondsAfterFinished,
     ResourceSpec resources,
-    EvidenceVolumeSpec evidence) {
+    EvidenceVolumeSpec evidence,
+    SourceVolumeSpec sourceVolume) {
 
   public ScannerSpec(
       String image,
@@ -29,7 +30,18 @@ public record ScannerSpec(
       Long activeDeadlineSeconds,
       Integer ttlSecondsAfterFinished,
       ResourceSpec resources) {
-    this(image, serviceAccountName, backoffLimit, activeDeadlineSeconds, ttlSecondsAfterFinished, resources, null);
+    this(image, serviceAccountName, backoffLimit, activeDeadlineSeconds, ttlSecondsAfterFinished, resources, null, null);
+  }
+
+  public ScannerSpec(
+      String image,
+      String serviceAccountName,
+      Integer backoffLimit,
+      Long activeDeadlineSeconds,
+      Integer ttlSecondsAfterFinished,
+      ResourceSpec resources,
+      EvidenceVolumeSpec evidence) {
+    this(image, serviceAccountName, backoffLimit, activeDeadlineSeconds, ttlSecondsAfterFinished, resources, evidence, null);
   }
 
   public ScannerSpec {
@@ -46,6 +58,6 @@ public record ScannerSpec(
   }
 
   public static ScannerSpec defaults(String image) {
-    return new ScannerSpec(image, null, 1, 86_400L, 86_400, ResourceSpec.empty(), null);
+    return new ScannerSpec(image, null, 1, 86_400L, 86_400, ResourceSpec.empty(), null, null);
   }
 }

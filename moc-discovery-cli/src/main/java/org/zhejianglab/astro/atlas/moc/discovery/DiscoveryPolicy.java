@@ -29,9 +29,19 @@ public record DiscoveryPolicy(
     Duration requestTimeout,
     Duration taskTimeout,
     int maxOrder) {
-  public static DiscoveryPolicy cdsPublicMocV1() {
-    return new DiscoveryPolicy("cds-public-moc-v1", List.of("alasky.cds.unistra.fr", "cds.unistra.fr"), 50, 10, 40,
+  /** The public status projection is deliberately smaller than the search cap. */
+  public static final int STATUS_CANDIDATE_LIMIT = 50;
+
+  public static DiscoveryPolicy cdsPublicMocV2() {
+    // MAXREC=51 lets the worker distinguish exactly 50 records from a result
+    // that has at least one more record. The 51st record is evidence only and
+    // never enters the Kubernetes status projection.
+    return new DiscoveryPolicy("cds-public-moc-v2", List.of("alasky.cds.unistra.fr", "alasky.unistra.fr", "cds.unistra.fr"), 51, 0, 1,
         64L * 1024 * 1024, 256L * 1024 * 1024, Duration.ofSeconds(20), Duration.ofMinutes(10), 12);
+  }
+
+  public int statusCandidateLimit() {
+    return Math.min(STATUS_CANDIDATE_LIMIT, maxCandidates);
   }
 
   public boolean allows(URI uri) {

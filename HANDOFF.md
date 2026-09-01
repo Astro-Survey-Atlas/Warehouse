@@ -13,7 +13,7 @@ limitations under the License.
 
 # Warehouse Session Handoff
 
-Updated: 2026-08-28
+Updated: 2026-08-30
 
 Repository: `/home/aaron/Repo/Astro-Survey-Atlas-Warehouse`
 
@@ -28,7 +28,7 @@ to the code being changed. The Assets integration handoff is
 
 This repository has intentional uncommitted deployment, documentation, probe,
 and local configuration work. The implementation fixes are in the current
-Warehouse history (`47c8618`); preserve every remaining change shown by
+Warehouse history (`d9526c6`); preserve every remaining change shown by
 `git status --short`, including the bounded ScanRequest manifests and probe
 results. These files are not disposable generated output. The sibling
 `/home/aaron/Repo/data-warehouse` is a frozen legacy/reference repository and
@@ -81,6 +81,11 @@ CSV/TSV validates configured RA/Dec or NESTED HEALPix columns before reading
 rows. HST WCS in a later `SCI` HDU and FITS binary-table catalogs remain
 explicitly unsupported and fail visibly rather than inventing coverage.
 
+The scanner's Java HEALPix extraction is covered by the shared
+MOC-Core-SDK conformance fixture (`MOC-Core-SDK@2ebc395`). Warehouse consumes
+the fixture for numerical parity; it does not vendor or expose a separate
+scientific Core implementation.
+
 ## Live Deployment Layout
 
 The current cluster runs the self-managed Warehouse infrastructure as Helm
@@ -111,20 +116,40 @@ Elasticsearch, MinIO, Flink, and evidence claims were explicitly released on
 2026-08-26. The shared `nfs-data` provisioner and unrelated retained PVs remain
 in place for other namespaces.
 
-The Warehouse scanner/operator code is deployed separately. The Operator runs
-as Deployment `astro-atlas-operator` in namespace `atlas-system`, using the
-image
-`crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-operator:0.2.0-20260826-mocdiscovery`.
+The Warehouse scanner/operator code is deployed separately. The ScanRequest
+Operator runs as Deployment `astro-atlas-operator` in namespace `atlas-system`,
+using image
+`crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-operator:0.2.0-20260830-143932`.
 It watches `ScanRequest` resources in `atlas-warehouse`, creates immutable plan
 ConfigMaps and one scanner Job per rendered plan, and injects the image
-`crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.2.0-20260826-shutdownfix1` for requests that do not pin an
+`crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-scanner:0.2.0-20260829-pvc1` for requests that do not pin an
 image. The previously running CSST full-prefix retry used the older `bulkfix1`
 image and was not modified in place; it has since failed on its six-hour
 deadline. New retries must use `shutdownfix1` (or a deliberately pinned image)
 and a bounded prefix/deadline appropriate to the workload.
+MOC discovery runs in a separate `astro-atlas-moc-discovery` Deployment and
+ServiceAccount, using the operator image above only for the dedicated
+`MocDiscoveryMain` entrypoint. Its Job image is
+`crpi-wixjy6gci86ms14e.cn-hongkong.personal.cr.aliyuncs.com/ay-dev/astro-atlas-moc-discovery:0.1.0-20260830-143932`.
 Jobs read OSS/S3/MinIO through Secret references, write the three `ast_*`
 indices, and persist inventory/normalized/error evidence to the
 `atlas-warehouse`-local `atlas-evidence-smoke` PVC.
+
+On 2026-08-29 Infra revision 2 added the Warehouse-owned static source PVC
+`atlas-source-catalogs` (1800Gi, ReadOnlyMany, NFS export
+`10.15.49.212:/mnt/data/catalogs`) labelled
+`atlas.zhejianglab.org/scanner-source=true`. Local ScanRequests mount this PVC
+read-only through `scanner.sourceVolume`; Assets no longer creates source
+PV/PVC resources or passes node-specific host paths. The deployed Operator is
+image `0.2.0-20260830-143932` and scanner image `0.2.0-20260829-pvc1`; its
+dedicated MOC discovery controller uses the same operator image and creates
+Jobs with discovery image `0.1.0-20260830-143932`.
+
+The bounded COSMOS CSV ScanRequest
+`cosmos-parameter-prediction-catalog-20260829` completed successfully with
+one file, 298,232 valid rows, 19 order-8 coverage records and zero extraction
+errors. Evidence was written under
+`/var/lib/atlas-evidence/cosmos-parameter-prediction-20260829`.
 
 The checked-in installation sequence is: build Maven jars, build and push the
 scanner/operator images, apply `namespace.yaml`, `crd.yaml`, `rbac.yaml`, and
@@ -136,14 +161,32 @@ batches and a 90-second request timeout for large catalog prefixes.
 
 ## Verification Baseline
 
-The latest local gate was green:
+The latest local gate on 2026-08-28 was green:
 
 ```text
-mvn test                         # 70 tests passed
-mvn package -DskipTests          # passed
+mvn -B -q test                   # passed
+mvn -B -q verify                 # passed
 Helm template/lint and kubectl dry-run  # checked chart/manifests
 git diff --check                 # clean for the reviewed files
 ```
+
+The 2026-08-30 MOC v2 review-status fix passed `mvn -B -q test` and was
+deployed with the updated CRD, isolated operator/discovery images, and
+dedicated controller. The live CRD now declares the
+structured `status.reviewSummary` fields without requiring empty
+`candidates`/`probes` arrays, which Fabric8 may omit during serialization. The
+discovery worker now uses the CDS MOCServer filter API rather than the
+unsupported ADQL request and records empty/malformed responses as protocol
+evidence. The verified JWST retry
+`jwst-moc-discovery-fix-20260830114238` is `SUCCEEDED` with 16 candidates, 10
+probes, and 10 accepted spatial MOCs (`maxOrder=12`, ICRS/NESTED). The earlier
+ADQL attempts remain historical zero-result/legacy records.
+
+The live `mocdiscoveryrequests` CRD accepts only `cds-public-moc-v2`; applying a
+legacy v1 object is intentionally unsupported. Existing v1 objects remain
+read-only historical records. A v2 retry
+`jwst-moc-discovery-fix-20260830114238-retry-20260830064604` completed with 16
+candidates, `schemaVersion=2`, `searchRecordCount=16`, and `truncated=false`.
 
 Recorded probes on 2026-08-25:
 
@@ -194,21 +237,21 @@ multi-HDU and FITS binary-table probes remain explicit unsupported/error
 evidence.
 
 Recovery retry `oss-csst-w1-catalog-full-retry3-20260828` was submitted on
-2026-08-28 with the `shutdownfix1` scanner image and a 24-hour deadline. It is
-currently running in the background; do not modify the Job in place. A
-read-only check at 2026-08-28T08:29Z found the generated Job
-`oss-csst-w1-catalog-full-retry3-20260828-scan-6568995b57` and its Pod
-(`1/1 Running`). Recheck its Scanner summary, evidence, and final layer state
-after it reaches a terminal phase.
+2026-08-28 with the `shutdownfix1` scanner image and a 24-hour deadline. It
+reached `FAILED / DeadlineExceeded` on 2026-08-29T12:15:39Z; the generated Job
+was `oss-csst-w1-catalog-full-retry3-20260828-scan-6568995b57`. Preserve that
+Job and its evidence. The `csst-w1-phot-catalog` layer remains non-public until
+a new bounded retry finishes as `ACTIVE` or an explicit `FAILED` result is
+recorded.
 
 Assets is deployed separately as Helm release `astro-survey-atlas-assets`
-(revision 83, image `0.1.0-20260827-163611`) in namespace
+(revision 84, image `0.1.0-20260828-215713`) in namespace
 `astro-survey-atlas-assets`. It points at the new
 Warehouse Service with `ASSETS_WAREHOUSE_ES_URL` and reads only the three
-`ast_*` indices. Its runtime now merges the 44-record static public bundle
+`ast_*` indices. Its runtime now merges the 47-record static public bundle
 with ACTIVE Warehouse layers, paginates coverage reads, and exposes controlled
 reload/status endpoints. The live public coverage response currently contains
-53 footprints. Health and read-only coverage smoke are passing; the protected
+56 footprints. Health and read-only coverage smoke are passing; the protected
 catalog reload and post-recovery CSST smoke remain pending until the CSST layer
 has a terminal state.
 
@@ -258,9 +301,9 @@ FITS binary-table catalogs fail explicitly until separate contracts are added.
 Use this order for operational follow-up; documentation and release changes in
 this session do not alter the running CSST Job:
 
-1. Recover `csst-w1-phot-catalog` from the expired `UPDATING` lease with a new
-   bounded retry using the current scanner image; preserve the failed Job and
-   evidence.
+1. Decide whether `csst-w1-phot-catalog` still merits another bounded retry;
+   if so, submit a new ScanRequest with a bounded prefix/deadline and the
+   current scanner image. Preserve the failed retry3 Job and evidence.
 2. After the layer is `ACTIVE` or explicitly `FAILED`, verify counts/evidence,
    reload Assets through the protected endpoint only on success, and rerun the
    catalog/overlap/reverse-lookup/Range smoke.

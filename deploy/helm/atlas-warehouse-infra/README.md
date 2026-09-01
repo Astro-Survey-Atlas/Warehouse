@@ -60,11 +60,34 @@ atlas-warehouse-kafka.atlas-warehouse.svc.cluster.local:9092
 | `minio.persistence.size` | `50Gi` | Evidence/object data volume |
 | `indexBootstrap.enabled` | `true` | Install strict templates and create missing `ast_*` indices |
 | `kafka.enabled` | `false` | Opt-in broker for a future event-driven/Flink profile |
+| `sourceVolumes` | `[]` | Optional namespace-local, read-only scanner input PVCs |
 
 Use immutable image tags or digests in production and enable authentication,
 TLS, backups, resource limits, and a suitable StorageClass. The bundled
 single-node Elasticsearch and standalone MinIO values are for validation, not
 high availability.
+
+### Scanner source volumes
+
+The chart can own an NFS-backed static PV/PVC for local scans. Configure this
+only with deployment-specific values; the source export is never included in a
+ScanRequest or Assets Connector:
+
+```yaml
+sourceVolumes:
+  - claimName: atlas-source-catalogs
+    capacity: 1800Gi
+    accessModes: [ReadOnlyMany]
+    nfs:
+      server: nfs.example.invalid
+      path: /exports/catalogs
+```
+
+To use a claim created outside this chart, set `existingClaim: true` and add
+`atlas.zhejianglab.org/scanner-source=true` to the claim. The Operator mounts
+only labelled, `Bound` claims read-only and validates that the request's local
+path stays under its mount. PVCs are namespace-local, so a watched Workspace
+namespace needs its own approved claim if it submits local scans.
 
 ## Upgrade Safety
 

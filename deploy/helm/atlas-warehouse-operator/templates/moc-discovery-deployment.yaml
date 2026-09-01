@@ -1,33 +1,29 @@
 # Copyright 2026 Astro Survey Atlas contributors.
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-# http://www.apache.org/licenses/LICENSE-2.0
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
+{{- if .Values.mocDiscovery.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "atlas-warehouse-operator.fullname" . }}
+  name: {{ .Values.mocDiscovery.name }}
   namespace: {{ .Values.operator.namespace }}
   labels:
-    {{- include "atlas-warehouse-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ .Values.mocDiscovery.name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
 spec:
-  replicas: {{ .Values.operator.replicas }}
+  replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ include "atlas-warehouse-operator.name" . }}
+      app.kubernetes.io/name: {{ .Values.mocDiscovery.name }}
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: {{ include "atlas-warehouse-operator.name" . }}
+        app.kubernetes.io/name: {{ .Values.mocDiscovery.name }}
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
-      serviceAccountName: {{ .Values.operator.serviceAccount.name }}
+      serviceAccountName: {{ .Values.mocDiscovery.serviceAccount.name }}
       imagePullSecrets:
         {{- toYaml .Values.imagePullSecrets | nindent 8 }}
       securityContext:
@@ -38,14 +34,21 @@ spec:
         - name: tmp
           emptyDir: {}
       containers:
-        - name: operator
+        - name: moc-discovery
           image: "{{ .Values.operator.image.repository }}:{{ .Values.operator.image.tag }}"
           imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+          command: ["java", "-cp", "/app/operator.jar", "org.zhejianglab.astro.atlas.operator.MocDiscoveryMain"]
           env:
             - name: WATCH_NAMESPACES
               value: {{ join "," .Values.watchNamespaces | quote }}
             - name: SCANNER_IMAGE
-              value: {{ .Values.scanner.image | quote }}
+              value: "discovery-unused"
+            - name: MOC_DISCOVERY_IMAGE
+              value: {{ .Values.mocDiscovery.image | quote }}
+            - name: MOC_DISCOVERY_EVIDENCE_CLAIM
+              value: {{ .Values.mocDiscovery.evidenceClaim | quote }}
+            - name: MOC_DISCOVERY_EVIDENCE_MOUNT_PATH
+              value: {{ .Values.mocDiscovery.evidenceMountPath | quote }}
             - name: RECONCILE_INTERVAL_SECONDS
               value: {{ .Values.operator.reconcileIntervalSeconds | quote }}
           securityContext:
@@ -58,3 +61,4 @@ spec:
               mountPath: /tmp
           resources:
             {{- toYaml .Values.operator.resources | nindent 12 }}
+{{- end }}

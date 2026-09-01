@@ -92,7 +92,10 @@ public final class MocDiscoveryRequestOperator implements AutoCloseable {
       JsonNode spec = mapper.valueToTree(current.get("spec"));
       String surveyName = spec.path("query").path("surveyName").asText("").trim();
       String policyRef = spec.path("policyRef").asText("").trim();
-      if (surveyName.isBlank() || !"cds-public-moc-v1".equals(policyRef)) {
+      // v1 requests are historical evidence. They are intentionally ignored
+      // so this controller never rewrites their status or re-runs their Jobs.
+      if (!"cds-public-moc-v2".equals(policyRef)) return;
+      if (surveyName.isBlank()) {
         setStatus(resource, current, Map.of("phase", "INVALID", "reason", "InvalidIntent"));
         return;
       }
@@ -105,10 +108,20 @@ public final class MocDiscoveryRequestOperator implements AutoCloseable {
       } else {
         JobStatusMapper.Observation observation = JobStatusMapper.observe(job);
         Map<String, Object> summary = terminal(observation.phase()) ? discoverySummary(namespace, job) : Map.of();
-        Map<String, Object> status = new LinkedHashMap<>(JobStatusMapper.status(observation.phase(), jobName,
-            observation.reason(), observation.message(), generation(current), summary));
+        Map<String, Object> compactSummary = new LinkedHashMap<>(summary);
+        Object reviewSummary = compactSummary.remove("reviewSummary");
+        String phase = observation.phase();
+        String reason = observation.reason();
+        String message = observation.message();
+        if ("SUCCEEDED".equals(observation.phase()) && "FAILED".equals(summary.get("phase"))) {
+          phase = "FAILED";
+          reason = "DiscoveryProtocolError";
+          message = "Discovery completed with a transport or protocol error; inspect evidence";
+        }
+        Map<String, Object> status = new LinkedHashMap<>(JobStatusMapper.status(phase, jobName,
+            reason, message, generation(current), compactSummary));
         copyCount(status, summary, "candidateCount");
-        copyCount(status, summary, "probeCount");
+        if (reviewSummary instanceof Map<?, ?> review) status.put("reviewSummary", review);
         status.put("evidencePath", evidencePath);
         setStatus(resource, current, status);
       }

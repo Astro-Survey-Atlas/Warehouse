@@ -21,11 +21,11 @@ belong to [Assets](https://github.com/Astro-Survey-Atlas/Assets).
 
 | Survey/product intent | Policy | Discovery result | Interpretation |
 | --- | --- | --- | --- |
-| SkyMapper DR4 color footprint | `cds-public-moc-v1` | CDS ObsCore HTTP 200, empty body; `candidateCount=0`, `probeCount=0` | Evidence of a bounded empty response, not absence of the survey MOC |
-| KiDS DR5 color footprint | `cds-public-moc-v1` | CDS ObsCore HTTP 200, empty body; `candidateCount=0`, `probeCount=0` | Requires the Assets source snapshot for publication |
-| VISTA VIKING J footprint | `cds-public-moc-v1` | CDS ObsCore HTTP 200, empty body; `candidateCount=0`, `probeCount=0` | Keep the upstream response and query parameters as evidence |
-| DECaLS DR5 color footprint | `cds-public-moc-v1` | CDS ObsCore HTTP 200, empty body; `candidateCount=0`, `probeCount=0` | Do not manufacture geometry from a center or area estimate |
-| Gaia DR3 smoke intent | `cds-public-moc-v1` | Bounded smoke request retained with policy and response evidence | A discovery probe is not a public release decision |
+| SkyMapper DR4 color footprint | `cds-public-moc-v2` | Bounded CDS response retained as evidence | Evidence of a bounded empty response, not absence of the survey MOC |
+| KiDS DR5 color footprint | `cds-public-moc-v2` | Bounded CDS response retained as evidence | Requires the Assets source snapshot for publication |
+| VISTA VIKING J footprint | `cds-public-moc-v2` | Bounded CDS response retained as evidence | Keep the upstream response and query parameters as evidence |
+| DECaLS DR5 color footprint | `cds-public-moc-v2` | Bounded CDS response retained as evidence | Do not manufacture geometry from a center or area estimate |
+| Gaia DR3 smoke intent | `cds-public-moc-v2` | Bounded search request retained with policy and response evidence | Candidate acquisition is an Assets build decision |
 
 The current Assets worktree contains reviewed layer artifacts named
 `skymapper-dr4-color-footprint`, `kids-dr5-color-footprint`,

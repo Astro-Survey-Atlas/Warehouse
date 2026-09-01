@@ -21,11 +21,14 @@ import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 import org.zhejianglab.astro.atlas.core.PlanValidationException;
 import org.zhejianglab.astro.atlas.core.ScanPlan;
 import org.zhejianglab.astro.atlas.core.ScanPlanValidator;
+import org.zhejianglab.astro.atlas.core.SourceType;
 
 public final class ScanRequestSpecParser {
+  private static final Pattern PVC_NAME = Pattern.compile("[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*");
   private final ObjectMapper mapper;
 
   public ScanRequestSpecParser() {
@@ -55,6 +58,7 @@ public final class ScanRequestSpecParser {
       spec = mapper.treeToValue(specNode, ScanRequestSpec.class);
       ScanPlanValidator.validate(spec.plan());
       validateEvidenceMount(spec, errors);
+      validateSourceVolume(spec, errors);
     } catch (PlanValidationException exception) {
       errors.addAll(exception.errors());
     } catch (Exception exception) {
@@ -67,7 +71,8 @@ public final class ScanRequestSpecParser {
     if (!errors.isEmpty()) throw new OperatorValidationException(errors);
     ScannerSpec scanner = new ScannerSpec(image, spec.scanner().serviceAccountName(),
         spec.scanner().backoffLimit(), spec.scanner().activeDeadlineSeconds(),
-        spec.scanner().ttlSecondsAfterFinished(), spec.scanner().resources(), spec.scanner().evidence());
+        spec.scanner().ttlSecondsAfterFinished(), spec.scanner().resources(), spec.scanner().evidence(),
+        spec.scanner().sourceVolume());
     return new ParsedScanRequest(new ScanRequestSpec(spec.plan(), scanner, spec.credentials()),
         resource.getMetadata().getName());
   }
@@ -91,6 +96,48 @@ public final class ScanRequestSpecParser {
       }
     } catch (RuntimeException exception) {
       errors.add("evidence.outputPath must be a valid path under scanner.evidence.mountPath");
+    }
+  }
+
+  private static void validateSourceVolume(ScanRequestSpec spec, List<String> errors) {
+    if (spec == null || spec.plan() == null || spec.plan().source() == null
+        || spec.plan().source().connector() == null) return;
+    boolean local = SourceType.LOCAL == spec.plan().source().connector().type();
+    SourceVolumeSpec volume = spec.scanner() == null ? null : spec.scanner().sourceVolume();
+    if (local && volume == null) {
+      errors.add("scanner.sourceVolume is required for local sources");
+      return;
+    }
+    if (!local && volume != null) {
+      errors.add("scanner.sourceVolume is only valid for local sources");
+      return;
+    }
+    if (volume == null) return;
+    if (volume.claimName() == null || !PVC_NAME.matcher(volume.claimName()).matches()) {
+      errors.add("scanner.sourceVolume.claimName must be a Kubernetes DNS name");
+    }
+    try {
+      Path mount = Path.of(volume.mountPath()).normalize();
+      if (!mount.isAbsolute() || mount.equals(Path.of("/"))) {
+        errors.add("scanner.sourceVolume.mountPath must be an absolute non-root path");
+      }
+      if (volume.subPath() != null) {
+        if (volume.subPath().startsWith("/") || volume.subPath().contains("\\\\")) {
+          errors.add("scanner.sourceVolume.subPath must be a relative POSIX path");
+        }
+        for (String segment : volume.subPath().split("/")) {
+          if (segment.isBlank() || ".".equals(segment) || "..".equals(segment)) {
+            errors.add("scanner.sourceVolume.subPath cannot contain empty or dot segments");
+            break;
+          }
+        }
+      }
+      Path root = Path.of(spec.plan().source().location().rootPath()).normalize();
+      if (!root.isAbsolute() || !root.startsWith(mount)) {
+        errors.add("local source location.rootPath must be under scanner.sourceVolume.mountPath");
+      }
+    } catch (RuntimeException exception) {
+      errors.add("scanner.sourceVolume paths must be valid POSIX paths");
     }
   }
 

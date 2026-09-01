@@ -21,7 +21,7 @@ public record DiscoveryIntent(String surveyName, String releaseHint, String prod
     releaseHint = optional(releaseHint);
     productHint = optional(productHint);
     policyRef = optional(policyRef);
-    if (policyRef == null) policyRef = "cds-public-moc-v1";
+    if (policyRef == null) policyRef = "cds-public-moc-v2";
   }
 
   private static String required(String value, String field) {

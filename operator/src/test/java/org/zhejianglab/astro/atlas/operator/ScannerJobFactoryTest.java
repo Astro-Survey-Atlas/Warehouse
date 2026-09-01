@@ -36,7 +36,8 @@ class ScannerJobFactoryTest {
         OperatorTestFixtures.localPlan(null), CredentialsSpec.empty());
     var spec = new ScanRequestSpec(OperatorTestFixtures.localPlan(null),
         new ScannerSpec("atlas-scanner:test", null, 1, 86_400L, 86_400,
-            ResourceSpec.empty(), OperatorTestFixtures.evidenceVolume()), CredentialsSpec.empty());
+            ResourceSpec.empty(), OperatorTestFixtures.evidenceVolume(),
+            new SourceVolumeSpec("atlas-source", "/survey", "catalogs")), CredentialsSpec.empty());
     ScannerJobFactory factory = new ScannerJobFactory();
     String jobName = KubeNames.scannerJobName("nightly-scan", plan.sha256());
     String configMapName = KubeNames.planConfigMapName(jobName);
@@ -48,8 +49,16 @@ class ScannerJobFactoryTest {
     assertEquals(List.of("java", "-jar", "/app/scanner-cli.jar"),
         job.getSpec().getTemplate().getSpec().getContainers().get(0).getCommand());
     assertEquals(120L, job.getSpec().getTemplate().getSpec().getTerminationGracePeriodSeconds());
-    assertEquals(2, job.getSpec().getTemplate().getSpec().getVolumes().size());
-    assertEquals("atlas-evidence", job.getSpec().getTemplate().getSpec().getVolumes().get(1)
+    assertEquals(3, job.getSpec().getTemplate().getSpec().getVolumes().size());
+    assertEquals("atlas-source", job.getSpec().getTemplate().getSpec().getVolumes().get(1)
+        .getPersistentVolumeClaim().getClaimName());
+    assertTrue(job.getSpec().getTemplate().getSpec().getVolumes().get(1)
+        .getPersistentVolumeClaim().getReadOnly());
+    assertEquals("catalogs", job.getSpec().getTemplate().getSpec().getContainers().get(0)
+        .getVolumeMounts().get(1).getSubPath());
+    assertTrue(job.getSpec().getTemplate().getSpec().getContainers().get(0)
+        .getVolumeMounts().get(1).getReadOnly());
+    assertEquals("atlas-evidence", job.getSpec().getTemplate().getSpec().getVolumes().get(2)
         .getPersistentVolumeClaim().getClaimName());
     assertEquals("uid-1", job.getMetadata().getOwnerReferences().get(0).getUid());
     assertTrue(job.getMetadata().getAnnotations().containsKey(OperatorConstants.PLAN_HASH_ANNOTATION));

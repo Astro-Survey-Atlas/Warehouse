@@ -21,6 +21,7 @@ import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResourceList;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Container;
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.Watch;
@@ -130,8 +131,13 @@ public final class ScanRequestOperator implements AutoCloseable {
         .withName(eventResource.getMetadata().getName());
     GenericKubernetesResource current = resource.get();
     if (current == null) return;
+    // ScanRequests are immutable execution records. A terminal status is only
+    // retried through a new resubmission resource, never because a Job image
+    // or deterministic execution hash changed during an Operator rollout.
+    if (terminalStatus(current)) return;
     try {
       ScanRequestSpecParser.ParsedScanRequest parsed = parser.parse(current, config.scannerImage());
+      if (!sourceVolumeReady(namespace, parsed.spec().scanner().sourceVolume(), resource, current)) return;
       RenderedPlan plan = materializer.render(parsed.spec().plan(), parsed.spec().credentials());
       String executionHash = KubeNames.sha256(plan.sha256() + "\n"
           + mapper.writeValueAsString(parsed.spec().scanner()));
@@ -189,6 +195,34 @@ public final class ScanRequestOperator implements AutoCloseable {
     }
   }
 
+  private boolean sourceVolumeReady(
+      String namespace,
+      SourceVolumeSpec source,
+      Resource<GenericKubernetesResource> resource,
+      GenericKubernetesResource current) {
+    if (source == null) return true;
+    PersistentVolumeClaim claim = client.persistentVolumeClaims().inNamespace(namespace)
+        .withName(source.claimName()).get();
+    if (claim == null) {
+      updateStatus(resource, current, invalidStatus(current,
+          "scanner.sourceVolume.claimName does not reference an existing PVC: " + source.claimName()));
+      return false;
+    }
+    Map<String, String> labels = claim.getMetadata() == null ? null : claim.getMetadata().getLabels();
+    if (labels == null || !OperatorConstants.SCANNER_SOURCE_LABEL_VALUE.equals(labels.get(OperatorConstants.SCANNER_SOURCE_LABEL))) {
+      updateStatus(resource, current, invalidStatus(current,
+          "source PVC is not authorized for scanner mounts: " + source.claimName()));
+      return false;
+    }
+    String phase = claim.getStatus() == null ? null : claim.getStatus().getPhase();
+    if (!"Bound".equalsIgnoreCase(phase)) {
+      updateStatus(resource, current, JobStatusMapper.status("WAITING", null,
+          "SourceVolumePending", "source PVC is not Bound: " + source.claimName(), generation(current), Map.of()));
+      return false;
+    }
+    return true;
+  }
+
   private static boolean terminal(String phase) {
     return "SUCCEEDED".equals(phase) || "FAILED".equals(phase);
   }
@@ -200,6 +234,13 @@ public final class ScanRequestOperator implements AutoCloseable {
     Object recordedJob = status.get("jobName");
     return recordedJob != null && recordedJob.equals(jobName)
         && phase instanceof String phaseValue && terminal(phaseValue);
+  }
+
+  static boolean terminalStatus(GenericKubernetesResource resource) {
+    Object statusValue = resource.get("status");
+    if (!(statusValue instanceof Map<?, ?> status)) return false;
+    Object phase = status.get("phase");
+    return phase instanceof String phaseValue && terminal(phaseValue);
   }
 
   private Map<String, Object> scannerSummary(String namespace, Job job) {

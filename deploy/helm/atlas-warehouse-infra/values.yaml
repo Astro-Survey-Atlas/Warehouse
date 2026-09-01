@@ -142,3 +142,10 @@ indexBootstrap:
     pullPolicy: IfNotPresent
   backoffLimit: 12
   esEndpoint: http://atlas-warehouse-elasticsearch:9200
+
+# Optional scanner input volumes. Each entry either declares an NFS-backed
+# static PV/PVC (the `nfs` form) or names an existing, pre-labelled claim with
+# `existingClaim: true`. The Operator only mounts claims carrying the rendered
+# scanner-source label, and Scanner Jobs always mount them read-only.
+sourceVolumes: []
+sourceVolumesLabelKey: atlas.zhejianglab.org/scanner-source

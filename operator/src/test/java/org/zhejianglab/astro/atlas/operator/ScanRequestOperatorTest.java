@@ -43,6 +43,15 @@ class ScanRequestOperatorTest {
   }
 
   @Test
+  void terminalRequestsAreNotRecreatedWhenExecutionHashChanges() {
+    GenericKubernetesResource resource = OperatorTestFixtures.request("scan");
+    resource.setAdditionalProperty("status", Map.of("phase", "FAILED", "jobName", "old-job"));
+    assertTrue(ScanRequestOperator.terminalStatus(resource));
+    resource.setAdditionalProperty("status", Map.of("phase", "RUNNING", "jobName", "old-job"));
+    assertFalse(ScanRequestOperator.terminalStatus(resource));
+  }
+
+  @Test
   void aCompletedJobWithoutMatchingSummaryCannotBeReportedAsSuccess() {
     var validation = ScannerSummaryParser.validateSuccessfulRun(Map.of(
         "phase", "COMPLETED", "scanRunId", "other-run", "layerId", "local-layer", "errorCount", 0,

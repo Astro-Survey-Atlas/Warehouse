@@ -19,10 +19,10 @@ metadata:
     {{- include "atlas-warehouse-operator.labels" $ | nindent 4 }}
 rules:
   - apiGroups: ["atlas.zhejianglab.org"]
-    resources: ["scanrequests", "mocdiscoveryrequests"]
+    resources: ["scanrequests"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["atlas.zhejianglab.org"]
-    resources: ["scanrequests/status", "mocdiscoveryrequests/status"]
+    resources: ["scanrequests/status"]
     verbs: ["get", "update", "patch"]
   - apiGroups: ["batch"]
     resources: ["jobs"]
@@ -30,6 +30,9 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list", "watch", "create"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch"]
@@ -52,5 +55,50 @@ subjects:
   - kind: ServiceAccount
     name: {{ $.Values.operator.serviceAccount.name }}
     namespace: {{ $.Values.operator.namespace }}
+---
+{{- if $.Values.mocDiscovery.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "atlas-warehouse-operator.fullname" $ }}-moc-discovery
+  namespace: {{ . }}
+  labels:
+    {{- include "atlas-warehouse-operator.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: ["atlas.zhejianglab.org"]
+    resources: ["mocdiscoveryrequests"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["atlas.zhejianglab.org"]
+    resources: ["mocdiscoveryrequests/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "atlas-warehouse-operator.fullname" $ }}-moc-discovery
+  namespace: {{ . }}
+  labels:
+    {{- include "atlas-warehouse-operator.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "atlas-warehouse-operator.fullname" $ }}-moc-discovery
+subjects:
+  - kind: ServiceAccount
+    name: {{ $.Values.mocDiscovery.serviceAccount.name }}
+    namespace: {{ $.Values.operator.namespace }}
+{{- end }}
 ---
 {{- end }}

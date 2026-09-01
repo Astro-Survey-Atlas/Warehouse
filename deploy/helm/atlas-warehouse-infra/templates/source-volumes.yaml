@@ -1,0 +1,54 @@
+# Copyright 2026 Astro Survey Atlas contributors.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+{{- range .Values.sourceVolumes }}
+{{- $claimName := required "sourceVolumes[].claimName is required" .claimName -}}
+{{- $pvName := printf "%s-pv" $claimName | trunc 63 | trimSuffix "-" -}}
+{{- if .nfs }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ $pvName }}
+  labels:
+    {{- include "atlas-warehouse-infra.labels" $ | nindent 4 }}
+    {{ $.Values.sourceVolumesLabelKey }}: "true"
+spec:
+  capacity:
+    storage: {{ .capacity | default "1Ti" | quote }}
+  accessModes:
+    {{- toYaml (.accessModes | default (list "ReadOnlyMany")) | nindent 4 }}
+  persistentVolumeReclaimPolicy: {{ .reclaimPolicy | default "Retain" | quote }}
+  storageClassName: {{ .storageClassName | default "" | quote }}
+  nfs:
+    server: {{ required "sourceVolumes[].nfs.server is required" .nfs.server | quote }}
+    path: {{ required "sourceVolumes[].nfs.path is required" .nfs.path | quote }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $claimName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "atlas-warehouse-infra.labels" $ | nindent 4 }}
+    {{ $.Values.sourceVolumesLabelKey }}: "true"
+spec:
+  accessModes:
+    {{- toYaml (.accessModes | default (list "ReadOnlyMany")) | nindent 4 }}
+  storageClassName: {{ .storageClassName | default "" | quote }}
+  volumeName: {{ $pvName }}
+  resources:
+    requests:
+      storage: {{ .capacity | default "1Ti" | quote }}
+---
+{{- else if not .existingClaim }}
+{{- fail (printf "source volume %s must define nfs or existingClaim: true" $claimName) }}
+{{- end }}
+{{- end }}

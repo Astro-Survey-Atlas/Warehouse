@@ -39,6 +39,11 @@ scanner:
   image: ghcr.io/astro-survey-atlas/astro-atlas-scanner:0.1.0
 
 mocDiscovery:
+  enabled: true
+  name: astro-atlas-moc-discovery
+  serviceAccount:
+    create: true
+    name: astro-atlas-moc-discovery
   image: ghcr.io/astro-survey-atlas/astro-atlas-moc-discovery:0.1.0
   evidenceClaim: atlas-evidence
   evidenceMountPath: /var/lib/atlas-evidence

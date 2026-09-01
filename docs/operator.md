@@ -29,7 +29,8 @@ WATCH_NAMESPACES=atlas-warehouse,astro-data-workspace
 
 The Operator opens one namespaced watch/list scope per entry. An empty value is
 invalid and must fail closed; it must never become Fabric8 `inAnyNamespace()`.
-The same allowlist applies to ScanRequest and MocDiscoveryRequest.
+The same namespace allowlist applies to ScanRequest and MocDiscoveryRequest,
+but they run in separate controller Deployments and ServiceAccounts.
 
 The Operator ServiceAccount is cluster-located in `atlas-system`. The supported
 Helm chart renders one Role and RoleBinding in each watched namespace. Those
@@ -48,6 +49,7 @@ namespace:
 | Scanner/MOC Job | Owned by the request; execution identity includes plan hash |
 | Pod and logs | Read only in the request namespace |
 | Evidence PVC | Must already exist in the request namespace |
+| Source PVC | Optional for local plans; must be `Bound`, labelled `atlas.zhejianglab.org/scanner-source=true`, and mounted read-only |
 | Source/sink Secret | Referenced by name/key only; values are never read by reconcile |
 
 Kubernetes owner references are namespace-local by design. A request with the
@@ -61,6 +63,15 @@ configured absolute `mountPath`) and rejects an `evidence.outputPath` outside
 the mount. The scanner writes source inventory, normalized scan, provenance,
 and extraction/write errors there. A CSI-backed object-store volume satisfies
 the same contract; direct object-store writes are deferred.
+
+Local plans use a separate `scanner.sourceVolume` binding. Its `claimName` is
+resolved in the ScanRequest namespace and must reference an existing `Bound`
+PVC carrying `atlas.zhejianglab.org/scanner-source=true`. The Job mounts it
+read-only at the declared absolute `mountPath` (normally `/data`) and applies
+an optional relative `subPath`. The local plan `source.location.rootPath` must
+remain below that mount. Assets validates the same contract before submission;
+the Operator repeats it before Job creation. Node-specific host paths and
+cross-namespace PVC references are not supported.
 
 MOC discovery uses an independent evidence path below the configured mount. Its
 Job never writes Elasticsearch or publishes a CoverageLayer.
@@ -83,11 +94,12 @@ TTL is operational cleanup, not indexed scan history.
 
 ## MOC Discovery Reconciliation
 
-For a valid `MocDiscoveryRequest`, the Operator accepts only
-`policyRef: cds-public-moc-v1`, creates one bounded evidence-only Job, and
-reports `phase`, `jobName`, `evidencePath`, `candidateCount`, and `probeCount`
-from the Job's compact completion marker. The marker contains no response
-body; complete evidence stays on the evidence mount.
+For a valid `MocDiscoveryRequest`, the discovery Operator accepts only
+`policyRef: cds-public-moc-v2`, creates one bounded evidence-only Job, and
+reports `phase`, `jobName`, `evidencePath`, and `candidateCount` from the Job's
+compact completion marker. The marker contains no response body; complete
+evidence stays on the evidence mount. Discovery does not probe or publish MOCs;
+Assets owns the subsequent build request.
 An HTTP 200 empty response is a successful bounded observation, not evidence
 that the survey does not exist. See [`moc-discovery.md`](moc-discovery.md).
 

@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
@@ -34,14 +35,14 @@ public final class LocalSourceAdapter implements SourceAdapter {
       throw new IllegalArgumentException("LocalSourceAdapter requires a local source");
     }
     Path root = Path.of(plan.source().location().rootPath()).toAbsolutePath().normalize();
-    if (Files.isRegularFile(root)) {
+    if (Files.isRegularFile(root, LinkOption.NOFOLLOW_LINKS)) {
       if (!isSupported(root, plan)) return Stream.empty();
       return Stream.of(toInputItem(root.getParent(), root));
     }
-    if (!Files.isDirectory(root)) throw new IllegalArgumentException("local source path is not a file or directory: " + root);
+    if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) throw new IllegalArgumentException("local source path is not a file or directory: " + root);
     try {
       Stream<Path> paths = Files.walk(root);
-      return paths.filter(Files::isRegularFile)
+      return paths.filter(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))
           .filter(path -> isSupported(path, plan))
           .filter(path -> !isExcluded(root, path, plan))
           .map(path -> toInputItem(root, path))

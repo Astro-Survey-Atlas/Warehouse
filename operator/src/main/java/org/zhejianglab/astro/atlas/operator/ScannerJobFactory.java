@@ -76,6 +76,16 @@ public final class ScannerJobFactory {
     List<VolumeMount> mounts = new ArrayList<>(plan.volumeMounts());
     mounts.add(new io.fabric8.kubernetes.api.model.VolumeMountBuilder().withName("scan-plan")
         .withMountPath("/etc/atlas/scan").withReadOnly(true).build());
+    SourceVolumeSpec source = scanner.sourceVolume();
+    if (source != null) {
+      volumes.add(new VolumeBuilder().withName("scan-source")
+          .withPersistentVolumeClaim(new PersistentVolumeClaimVolumeSourceBuilder()
+              .withClaimName(source.claimName()).withReadOnly(true).build()).build());
+      var sourceMount = new io.fabric8.kubernetes.api.model.VolumeMountBuilder()
+          .withName("scan-source").withMountPath(source.mountPath()).withReadOnly(true);
+      if (source.subPath() != null) sourceMount.withSubPath(source.subPath());
+      mounts.add(sourceMount.build());
+    }
     EvidenceVolumeSpec evidence = scanner.evidence();
     if (evidence != null) {
       volumes.add(new VolumeBuilder().withName("scan-evidence")

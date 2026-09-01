@@ -32,13 +32,27 @@ spec:
     surveyName: Gaia
     releaseHint: DR3
     productHint: source
-  policyRef: cds-public-moc-v1
+  policyRef: cds-public-moc-v2
 ```
 
-Only the fixed `cds-public-moc-v1` policy is accepted in v1. It controls
-allowlisted hosts, request count, candidate/probe limits, response bytes,
+Only the fixed `cds-public-moc-v2` policy is accepted. It controls
+allowlisted hosts, request count, candidate limits, response bytes,
 maximum task bytes, output order, and timeouts. No user-provided URL or
 arbitrary command is accepted.
+
+The policy uses the CDS `MocServer` filter API, not the ObsCore ADQL endpoint:
+
+```text
+GET https://alasky.cds.unistra.fr/MocServer/query
+  ?expr=obs_collection=*<survey>* && (...hints...)
+  &get=record&fmt=json&MAXREC=51&casesensitive=false
+  &fields=ID,...,moc_access_url,hips_service_url,...
+```
+
+The worker retains the original record and the response as evidence and hashes
+each body. It does not download candidate MOCs or run probes. Assets performs
+that acquisition only after an explicit build request, using the candidate URL
+from this summary and a locked SHA-256 snapshot.
 
 ## Execution And Evidence
 
@@ -48,14 +62,15 @@ candidate/probe records, hashes, errors, and truncation state below the evidence
 mount. It never writes `ast_layer_index_v1`, `ast_file_index_v1`, or
 `ast_coverage_index_v1`.
 
-Status exposes `phase`, `jobName`, `evidencePath`, `candidateCount`, and
-`probeCount` after a completed Job emits its compact completion marker. The
-full evidence remains on the evidence mount; the marker contains counts,
-request bytes, and truncation only, so reconcile logs do not contain upstream
-response bodies. A successful Job means the bounded request completed. A zero
-candidate or probe count is a valid upstream result and is not proof that the
-survey has no public MOC. `truncated` and transport errors must remain visible
-in evidence.
+Status exposes `phase`, `jobName`, `evidencePath`, and `candidateCount` after a
+completed Job emits its compact completion marker. The marker contains at most
+50 candidate summaries; the search reads 51 records so the 51st can reliably
+set `truncated` without entering status. Full evidence remains on the evidence
+mount, so reconcile logs do not contain upstream response bodies. A successful
+Job with zero candidates is a valid empty query, not proof that the survey has
+no public MOC. An HTTP success with an empty or malformed body is instead a
+transport/protocol error and remains visible in evidence. `truncated` and
+transport errors are never collapsed into a zero-result claim.
 
 Run a checked-in smoke request:
 
