@@ -90,29 +90,95 @@ public final class FitsHeaderHandler implements CoverageExtractor {
   }
 
   private static Map<String, String> readHeader(ScanContext context) throws IOException {
-    Map<String, String> header = new LinkedHashMap<>();
     try (InputStream input = context.content().open()) {
-      byte[] block = new byte[BLOCK_SIZE];
-      for (int blockNumber = 0; blockNumber < MAX_HEADER_BLOCKS; blockNumber++) {
-        int offset = 0;
-        while (offset < block.length) {
-          int read = input.read(block, offset, block.length - offset);
-          if (read < 0) return header;
-          offset += read;
-        }
-        for (int cardOffset = 0; cardOffset < block.length; cardOffset += CARD_SIZE) {
-          String card = new String(block, cardOffset, CARD_SIZE, StandardCharsets.US_ASCII);
-          String key = card.substring(0, 8).trim();
-          if ("END".equals(key)) return header;
-          if (card.length() > 9 && card.charAt(8) == '=' && !key.isEmpty()) {
-            String value = card.substring(10);
-            int comment = value.indexOf('/');
-            header.put(key, (comment < 0 ? value : value.substring(0, comment)).trim());
-          }
+      for (int hdu = 0; hdu < 64; hdu++) {
+        Map<String, String> header = readOneHeader(input);
+        if (header.isEmpty() || hasSpatialPosition(header)) return header;
+        long dataBytes = paddedDataBytes(header);
+        if (!skipFully(input, dataBytes)) return header;
+      }
+      return new LinkedHashMap<>();
+    }
+  }
+
+  private static Map<String, String> readOneHeader(InputStream input) throws IOException {
+    Map<String, String> header = new LinkedHashMap<>();
+    byte[] block = new byte[BLOCK_SIZE];
+    for (int blockNumber = 0; blockNumber < MAX_HEADER_BLOCKS; blockNumber++) {
+      int offset = 0;
+      while (offset < block.length) {
+        int read = input.read(block, offset, block.length - offset);
+        if (read < 0) return header;
+        offset += read;
+      }
+      for (int cardOffset = 0; cardOffset < block.length; cardOffset += CARD_SIZE) {
+        String card = new String(block, cardOffset, CARD_SIZE, StandardCharsets.US_ASCII);
+        String key = card.substring(0, 8).trim();
+        if ("END".equals(key)) return header;
+        if (card.length() > 9 && card.charAt(8) == '=' && !key.isEmpty()) {
+          String value = card.substring(10);
+          int comment = value.indexOf('/');
+          header.put(key, (comment < 0 ? value : value.substring(0, comment)).trim());
         }
       }
     }
     return header;
+  }
+
+  private static boolean hasSpatialPosition(Map<String, String> header) {
+    return header.containsKey("CRVAL1") && header.containsKey("CRVAL2")
+        || header.containsKey("RA") && header.containsKey("DEC")
+        || header.containsKey("RA_DEG") && header.containsKey("DEC_DEG");
+  }
+
+  private static long paddedDataBytes(Map<String, String> header) {
+    long bitpix = Math.abs(longValue(header, "BITPIX", 0L));
+    long axes = 1L;
+    long naxis = longValue(header, "NAXIS", 0L);
+    for (long axis = 1; axis <= naxis; axis++) {
+      axes = multiplyChecked(axes, Math.max(0L, longValue(header, "NAXIS" + axis, 0L)));
+    }
+    long bytes = multiplyChecked(multiplyChecked(axes, bitpix), 1L) / 8L;
+    bytes = addChecked(bytes, longValue(header, "PCOUNT", 0L));
+    bytes = multiplyChecked(bytes, Math.max(1L, longValue(header, "GCOUNT", 1L)));
+    return ((bytes + BLOCK_SIZE - 1L) / BLOCK_SIZE) * BLOCK_SIZE;
+  }
+
+  private static long longValue(Map<String, String> header, String key, long fallback) {
+    String value = header.get(key);
+    if (value == null) return fallback;
+    try {
+      return Long.parseLong(value.replace("D", "E").replace("d", "e").trim());
+    } catch (NumberFormatException ignored) {
+      return fallback;
+    }
+  }
+
+  private static long multiplyChecked(long left, long right) {
+    if (left == 0L || right == 0L) return 0L;
+    if (left > Long.MAX_VALUE / right) return Long.MAX_VALUE;
+    return left * right;
+  }
+
+  private static long addChecked(long left, long right) {
+    if (right > 0L && left > Long.MAX_VALUE - right) return Long.MAX_VALUE;
+    return left + right;
+  }
+
+  private static boolean skipFully(InputStream input, long bytes) throws IOException {
+    long remaining = bytes;
+    byte[] buffer = new byte[8192];
+    while (remaining > 0L) {
+      long skipped = input.skip(remaining);
+      if (skipped > 0L) {
+        remaining -= skipped;
+        continue;
+      }
+      int read = input.read(buffer, 0, (int) Math.min(buffer.length, remaining));
+      if (read < 0) return false;
+      remaining -= read;
+    }
+    return true;
   }
 
   private static Double firstDouble(Map<String, String> header, String... keys) {

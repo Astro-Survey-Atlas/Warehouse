@@ -1,0 +1,321 @@
+<!doctype html>
+<!--
+Copyright 2026 Astro Survey Atlas contributors.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Warehouse technical documentation: scan astronomical file metadata, maintain current sky coverage, and query explicit HEALPix cells.">
+  <title>Warehouse | Astro Survey Atlas</title>
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to documentation</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand-wrap" href="#overview" aria-label="Warehouse documentation home">
+        <img class="brand-logo" src="assets/logo.svg" alt="" width="32" height="32">
+        <span class="brand-text">Warehouse <span class="brand-badge">Docs</span></span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <ul class="nav-links">
+          <li><a class="nav-link" href="#submit">Quick start</a></li>
+          <li><a class="nav-link" href="#indices">Index explorer</a></li>
+          <li><a class="btn btn-secondary btn-sm" href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse">GitHub repository</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <div class="doc-wrapper">
+    <aside class="sidebar">
+      <nav aria-label="On this page" class="sidebar-group">
+        <p class="sidebar-title">Documentation</p>
+        <ul class="sidebar-list">
+          <li class="sidebar-item active"><a href="#overview">01 / Overview</a></li>
+          <li class="sidebar-item"><a href="#capabilities">02 / Capabilities</a></li>
+          <li class="sidebar-item"><a href="#submit">03 / Submit a scan</a></li>
+          <li class="sidebar-item"><a href="#query">04 / Query coverage</a></li>
+          <li class="sidebar-item"><a href="#indices">05 / Index explorer</a></li>
+          <li class="sidebar-item"><a href="#semantics">06 / Precision &amp; state</a></li>
+        </ul>
+      </nav>
+      <div class="sidebar-group">
+        <p class="sidebar-title">Canonical contracts</p>
+        <ul class="sidebar-list">
+          <li class="sidebar-item"><a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/scan-plan.md">ScanPlan v2</a></li>
+          <li class="sidebar-item"><a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/operator.md">Operator</a></li>
+          <li class="sidebar-item"><a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/query-api.md">Query API</a></li>
+          <li class="sidebar-item"><a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/index-contract.md">Index contract</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <main id="main-content" class="main-content" tabindex="-1">
+      <section id="overview" class="hero doc-section" aria-labelledby="overview-title">
+        <p class="hero-pill">Astro Survey Atlas / Spatial directory</p>
+        <h1 id="overview-title" class="hero-title">Find the files.<br>Keep the sky in context.</h1>
+        <p class="hero-desc">Warehouse discovers astronomical files and maintains their current searchable sky coverage. Scan metadata, retain evidence, and resolve explicit HEALPix cells back to original source files. Scientific data stays at its source.</p>
+        <div class="hero-buttons">
+          <a class="btn btn-primary" href="#submit">Submit your first scan</a>
+          <a class="btn btn-secondary" href="#query">Explore a query response</a>
+        </div>
+        <div class="arch-diagram" aria-label="Scan data flow">
+          <div class="arch-nodes">
+            <div class="arch-node"><p class="arch-node-name">One finite intent</p><p class="arch-node-role">CoverageLayer + source + mode</p></div>
+            <span class="arch-arrow">scan</span>
+            <div class="arch-node highlight-warehouse"><p class="arch-node-name">Warehouse</p><p class="arch-node-role">FileAsset + SpatialCoverage + evidence</p></div>
+            <span class="arch-arrow">lookup</span>
+            <div class="arch-node"><p class="arch-node-name">Current coverage</p><p class="arch-node-role">ACTIVE layers in ast_* indices</p></div>
+          </div>
+        </div>
+        <h2>Three projects, clear ownership</h2>
+        <div class="grid-3">
+          <article class="card"><h3 class="card-title">Warehouse</h3><p class="card-desc">Validates and executes scans, extracts file-level coverage, refreshes current indices, and retains inventory and extraction evidence. The Operator translates intent into namespaced Jobs.</p></article>
+          <article class="card"><h3 class="card-title">Assets</h3><p class="card-desc">Owns the public catalog, reviewed MOCs, releases, evidence presentation, overlap and reverse-lookup UX. Production reads the configured new Warehouse Elasticsearch directly.</p></article>
+          <article class="card"><h3 class="card-title">Workspace</h3><p class="card-desc">Owns user assets, connectors, labels, and local workflows. It can submit remote ScanRequests in an explicitly allowlisted namespace.</p></article>
+        </div>
+        <p>Warehouse is not a workflow engine, universal catalog, reduction system, or download proxy. Evidence-only MOC discovery does not publish public geometry or write <code>ast_*</code> documents. <code>SourceUnit</code> is reserved, not implemented.</p>
+      </section>
+
+      <section id="capabilities" class="doc-section" aria-labelledby="capabilities-title">
+        <p class="section-tag">02 / Extraction</p>
+        <h2 id="capabilities-title">Declare meaning, not processing steps</h2>
+        <p class="section-lead">A ScanPlan declares exactly one ExtractionMode for one source and one CoverageLayer. The scanner owns internal step ordering and validates the entire plan before enumeration or credentialed I/O.</p>
+        <div class="grid-2">
+          <article class="mode-card"><span class="mode-badge">fits-wcs</span><h3 class="card-title">Image and cube footprints</h3><p class="card-desc">Reads supported WCS headers and rasterizes at the required <code>outputOrder</code>. Sampled coverage is <code>estimated</code>; there is no silent center-point fallback.</p></article>
+          <article class="mode-card"><span class="mode-badge">fits-header-position</span><h3 class="card-title">Header position evidence</h3><p class="card-desc">Maps an explicit FITS header position at the required <code>outputOrder</code>. Precision is <code>entrypoint-only</code>, not an instrument footprint.</p></article>
+          <article class="mode-card"><span class="mode-badge">catalog-radec</span><h3 class="card-title">Catalog occupancy</h3><p class="card-desc">Reads configured RA and Dec columns in ICRS degrees and maps them to NESTED cells at <code>outputOrder</code>. Coverage describes file occupancy, not a per-row object index.</p></article>
+          <article class="mode-card"><span class="mode-badge">catalog-healpix</span><h3 class="card-title">Explicit source cells</h3><p class="card-desc">Requires a pixel column and exactly one fixed source order or order column. Preserves explicit NESTED order/ipix; an absent source order is never assumed to be 8.</p></article>
+        </div>
+        <h3>Local, S3-compatible, and OSS sources</h3>
+        <p>The <code>local</code> connector accepts a directory or single file. S3-compatible and OSS endpoints use the AWS SDK adapter, with canonical <code>s3://bucket/key</code> or <code>oss://bucket/key</code> identities. Supply a signing region when required. Credential references point to environment variables or mounted files; never put credential values in a plan.</p>
+        <div class="callout callout-info"><p><strong>Metadata only.</strong> FITS extraction reads headers, and catalogs expose configured spatial columns. Warehouse never reads or copies scientific image, spectrum, or cube arrays. Unsupported formats remain discovered FileAssets with evidence and no invented coverage.</p></div>
+        <p>Declare modality explicitly: <code>image</code>, <code>spectrum</code>, <code>cube</code>, <code>catalog</code>, <code>timeseries</code>, <code>visibility</code>, <code>event</code>, or <code>other</code>.</p>
+      </section>
+
+      <section id="submit" class="doc-section" aria-labelledby="submit-title">
+        <p class="section-tag">03 / Submission</p>
+        <h2 id="submit-title">From local diagnostic to persisted scan</h2>
+        <p class="section-lead">Start with a bounded catalog and a complete ScanPlan v2. The example below expects CSV or TSV files with <code>ra</code> and <code>dec</code> columns under <code>/data</code>.</p>
+        <h3>1. Inspect a local catalog</h3>
+        <p>This is a complete <code>scan-plan.json</code>. Adapt the source and evidence paths to your machine. The sink remains declared even when <code>--memory</code> bypasses Elasticsearch.</p>
+        <div class="code-box">
+          <div class="code-header"><span>scan-plan.json / ScanPlan v2</span><button type="button" class="copy-btn" data-copy-target="scan-plan-code">Copy plan</button></div>
+          <pre id="scan-plan-code" class="code-content" tabindex="0"><code class="language-json">{
+  "version": 2,
+  "scanRunId": "local-catalog-example",
+  "layer": {
+    "layerId": "local-catalog-example",
+    "surveyId": "example",
+    "releaseId": "local",
+    "productId": "catalog",
+    "modality": "catalog",
+    "coverageRole": "occupancy"
+  },
+  "source": {
+    "connector": {"type": "local"},
+    "location": {"rootPath": "/data"}
+  },
+  "filters": {"includeSuffixes": [".csv", ".tsv"]},
+  "extraction": {
+    "mode": "catalog-radec",
+    "outputOrder": 8,
+    "catalog": {"raColumn": "ra", "decColumn": "dec"}
+  },
+  "sink": {
+    "connector": {
+      "type": "elasticsearch",
+      "endpoint": "http://localhost:9200",
+      "credentialRef": {}
+    }
+  },
+  "evidence": {
+    "outputPath": "/var/lib/atlas-evidence/local-catalog-example"
+  }
+}</code></pre>
+        </div>
+        <div class="code-box">
+          <div class="code-header"><span>Local CLI / from the repository root</span><button type="button" class="copy-btn" data-copy-target="cli-code">Copy CLI</button></div>
+          <pre id="cli-code" class="code-content" tabindex="0"><code class="language-bash">mvn -B package
+java -jar scanner-cli/target/scanner-cli-0.1.0-SNAPSHOT-runner.jar \
+  --plan /path/to/scan-plan.json --memory</code></pre>
+        </div>
+        <div class="callout callout-warning"><p><strong>Memory diagnostics do not persist searchable state.</strong> Evidence is optional only with <code>--memory</code>; if declared, use a writable output path. To persist, omit <code>--memory</code>, configure the new Warehouse Elasticsearch endpoint and credential references, provision the strict indices, and retain evidence. Scanner startup does not create or recreate indices.</p></div>
+
+        <h3>2. Submit a namespaced ScanRequest</h3>
+        <p>This complete request wraps the same local catalog intent for Kubernetes. Install infrastructure and the Operator with the supported Helm charts first. Provision the evidence PVC and a Bound source PVC labelled <code>atlas.zhejianglab.org/scanner-source=true</code> in <code>atlas-warehouse</code>. The source claim's <code>catalogs</code> subdirectory is mounted read-only at <code>/data</code>.</p>
+        <div class="code-box">
+          <div class="code-header"><span>scanrequest-local.example.yaml</span><button type="button" class="copy-btn" data-copy-target="scan-request-code">Copy request</button></div>
+          <pre id="scan-request-code" class="code-content" tabindex="0"><code class="language-yaml">apiVersion: atlas.zhejianglab.org/v1alpha1
+kind: ScanRequest
+metadata:
+  name: local-catalog-example
+  namespace: atlas-warehouse
+spec:
+  scanner:
+    image: ghcr.io/astro-survey-atlas/astro-atlas-scanner:0.1.0
+    backoffLimit: 0
+    activeDeadlineSeconds: 3600
+    evidence:
+      claimName: atlas-evidence
+      mountPath: /var/lib/atlas-evidence
+    sourceVolume:
+      claimName: atlas-source-catalogs
+      mountPath: /data
+      subPath: catalogs
+  plan:
+    version: 2
+    scanRunId: local-catalog-example
+    layer:
+      layerId: local-catalog-example
+      surveyId: example
+      releaseId: local
+      productId: catalog
+      modality: catalog
+      coverageRole: occupancy
+    source:
+      connector:
+        type: local
+      location:
+        rootPath: /data
+    filters:
+      includeSuffixes: [.csv, .tsv]
+    extraction:
+      mode: catalog-radec
+      outputOrder: 8
+      catalog:
+        raColumn: ra
+        decColumn: dec
+    sink:
+      connector:
+        type: elasticsearch
+        endpoint: http://atlas-warehouse-elasticsearch:9200
+        credentialRef: {}
+    evidence:
+      outputPath: /var/lib/atlas-evidence/local-catalog-example</code></pre>
+        </div>
+        <p>The endpoint and image are example deployment settings, not universal defaults. This request assumes a sink without authentication; authenticated deployments must add namespace-local Secret bindings and plan credential references. Source paths must stay inside the declared source mount, and evidence paths inside the evidence mount. Host paths and cross-namespace claims are not supported.</p>
+        <p>Upstream examples: <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/deploy/kubernetes/scanrequest-local.example.yaml">complete local request</a>, <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/deploy/kubernetes/scanrequest-oss.example.yaml">OSS request with Secret references</a>, and <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/deploy/helm/README.md">Helm installation</a>.</p>
+
+        <h3>3. Observe execution and evidence</h3>
+        <div class="code-box">
+          <div class="code-header"><span>Submit and monitor / configured cluster required</span><button type="button" class="copy-btn" data-copy-target="monitor-code">Copy commands</button></div>
+          <pre id="monitor-code" class="code-content" tabindex="0"><code class="language-bash">kubectl apply -f deploy/kubernetes/scanrequest-local.example.yaml
+kubectl -n atlas-warehouse get scanrequest local-catalog-example -w
+
+# In another terminal, inspect status and the reported Job name.
+kubectl -n atlas-warehouse get scanrequest local-catalog-example -o yaml
+JOB_NAME=$(kubectl -n atlas-warehouse get scanrequest local-catalog-example \
+  -o jsonpath='{.status.jobName}')
+kubectl -n atlas-warehouse logs "job/${JOB_NAME}" --follow</code></pre>
+        </div>
+        <p>Wait for a Job name before requesting logs. Request phases are <code>INVALID</code>, <code>WAITING</code>, <code>SUBMITTED</code>, <code>RUNNING</code>, <code>SUCCEEDED</code>, and <code>FAILED</code>. The summary reports counts, available orders, source snapshot hash, errors, and evidence path. Detailed inventory, normalized scan, provenance, and errors stay on the evidence volume, not in the browser's initial request.</p>
+        <p>The Operator creates or adopts an immutable plan ConfigMap and execution-hash-named Job. All resources and credential references remain in the request namespace. The default allowlist watches only <code>atlas-warehouse</code>; Workspace submissions in <code>astro-data-workspace</code> require explicit opt-in. An empty allowlist fails closed.</p>
+      </section>
+
+      <section id="query" class="doc-section" aria-labelledby="query-title">
+        <p class="section-tag">04 / Reverse lookup</p>
+        <h2 id="query-title">Ask for cells. Receive file candidates.</h2>
+        <p class="section-lead">The Query API is read-only and diagnostic, not a scan submission endpoint or a required production hop. Assets performs this lookup directly against its configured Warehouse Elasticsearch.</p>
+        <div class="code-box">
+          <div class="code-header"><span>GET /v2/files/healpix</span><button type="button" class="copy-btn" data-copy-target="query-curl-code">Copy curl</button></div>
+          <pre id="query-curl-code" class="code-content" tabindex="0"><code class="language-bash"># Point this at your separately running diagnostic Query API.
+QUERY_API=http://localhost:8080
+curl --fail-with-body --get "$QUERY_API/v2/files/healpix" \
+  --data-urlencode 'layers=local-catalog-example' \
+  --data-urlencode 'order=8' \
+  --data-urlencode 'pixels=123' \
+  --data-urlencode 'limit=100'</code></pre>
+        </div>
+        <p>Replace pixel 123 with a cell from your scan evidence. Supply comma-separated <code>layers</code> and <code>pixels</code>, and one explicit <code>order</code>. Every requested layer must be ACTIVE and support that order. Results contain unique files and their <code>matchingCoverage</code>; they are cell-intersection candidates, not exact geometric overlap claims.</p>
+        <p>The default limit is 100, maximum 1000. A response or edge limit sets <code>truncated=true</code>. When <code>nextCursor</code> is non-null, pass it as the opaque <code>cursor</code> with the same normalized layers, order, and pixels. Do not treat truncation as a precision value or assume every truncated response has another page.</p>
+        <div class="playground-card">
+          <h3>Offline response fixtures</h3>
+          <p id="query-fixture-note">These bundled examples illustrate contract behavior. They do not contact a live service, query your indices, or report current survey availability.</p>
+          <div class="form-group">
+            <label class="form-label" for="query-scenario">Response scenario</label>
+            <select id="query-scenario" class="form-select" aria-describedby="query-fixture-note">
+              <option value="exact">Exact catalog occupancy</option>
+              <option value="estimated">Estimated WCS footprint</option>
+              <option value="updating">UPDATING layer unavailable</option>
+              <option value="failed">FAILED layer unavailable</option>
+              <option value="truncated">Truncated candidate response</option>
+            </select>
+          </div>
+          <p id="query-status" role="status" aria-live="polite">Offline fixture viewer. JavaScript loads the selected example.</p>
+          <div class="code-box">
+            <div class="code-header"><span>Fixture response / not live data</span><button type="button" class="copy-btn" data-copy-target="query-output">Copy response</button></div>
+            <pre id="query-output" class="code-content" tabindex="0" aria-label="Offline query response">Select a scenario to inspect a bundled response with JavaScript enabled.</pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="indices" class="doc-section" aria-labelledby="indices-title">
+        <p class="section-tag">05 / Storage contract</p>
+        <h2 id="indices-title">Three indices. One current state.</h2>
+        <p class="section-lead">Strict mappings separate layer lifecycle, global file identity, and layer-scoped spatial associations. The <code>v1</code> suffix versions mappings, not scan runs. Legacy <code>astro_*</code> indices are untouched and never used as fallback.</p>
+        <div class="grid-3">
+          <article class="card"><h3 class="card-title">CoverageLayer</h3><p class="card-desc"><code>ast_layer_index_v1</code> holds survey/release/product identity, modality, role, entrypoint, state, lease, snapshot hash, available orders, counts, and errors. Document ID: <code>layer_id</code>.</p></article>
+          <article class="card"><h3 class="card-title">FileAsset</h3><p class="card-desc"><code>ast_file_index_v1</code> holds canonical URI, name/type, parent URI, size, and timestamps. Document ID: SHA-256 of the canonical source URI. No raw data, modality, or layer-owned coverage list.</p></article>
+          <article class="card"><h3 class="card-title">SpatialCoverage</h3><p class="card-desc"><code>ast_coverage_index_v1</code> associates a layer and file with an explicit cell, method, role, modality, and precision. Identity is deterministic over layer, file, order, cell, and role.</p></article>
+        </div>
+        <div class="schema-container">
+          <div class="schema-nav" role="group" aria-label="Choose an index schema">
+            <button type="button" class="schema-nav-item active" data-schema="layer" aria-pressed="true" aria-controls="schema-content">Layer</button>
+            <button type="button" class="schema-nav-item" data-schema="file" aria-pressed="false" aria-controls="schema-content">File</button>
+            <button type="button" class="schema-nav-item" data-schema="coverage" aria-pressed="false" aria-controls="schema-content">Coverage</button>
+          </div>
+          <div id="schema-content" class="schema-body" aria-live="polite">
+            <p>The offline explorer displays mapping fields and illustrative documents. Read the canonical templates for the authoritative field definitions.</p>
+          </div>
+        </div>
+        <p>Canonical sources: <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/tree/main/contracts/index">strict Elasticsearch templates</a> and <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/index-contract.md">index identity, write, and read contract</a>.</p>
+      </section>
+
+      <section id="semantics" class="doc-section" aria-labelledby="semantics-title">
+        <p class="section-tag">06 / Invariants</p>
+        <h2 id="semantics-title">Precision is not completeness</h2>
+        <p class="section-lead">Coverage always retains its actual ICRS, NESTED HEALPix <code>order/ipix</code>. Coarsening finer data is allowed; expanding coarse coverage into claimed finer precision is not.</p>
+        <div class="grid-3">
+          <article class="mode-card"><h3 class="card-title">exact</h3><p class="card-desc">Exact cell assignment for the represented input, such as catalog occupancy. It does not turn a cell intersection into an exact geometry claim.</p></article>
+          <article class="mode-card"><h3 class="card-title">estimated</h3><p class="card-desc">Approximate coverage, including sampled WCS rasterization. Preserve that qualification in reverse-lookup results.</p></article>
+          <article class="mode-card"><h3 class="card-title">entrypoint-only</h3><p class="card-desc">Limited positional or entrypoint evidence, not a full footprint. If only an official URL is known, Assets reads the layer entrypoint; no synthetic file or coverage edge is created.</p></article>
+        </div>
+        <h3>Refresh a layer, not a historical index generation</h3>
+        <div class="grid-3">
+          <article class="card"><h4 class="card-title"><span class="status-pill status-updating">UPDATING</span></h4><p class="card-desc">An expiring lease prevents overlapping refreshes. Old layer coverage is deleted before replacement; the layer is unavailable during the update, never silently empty.</p></article>
+          <article class="card"><h4 class="card-title"><span class="status-pill status-active">ACTIVE</span></h4><p class="card-desc">Only verified successful current state is searchable. A successful empty scan is ACTIVE with zero coverage, a valid empty result.</p></article>
+          <article class="card"><h4 class="card-title"><span class="status-pill status-failed">FAILED</span></h4><p class="card-desc">Partial or failed work is unavailable. Any physical partial edges remain hidden behind the state gate; old coverage is not served as a fallback.</p></article>
+        </div>
+        <div class="callout callout-warning"><p><strong>Failure is terminal for an execution.</strong> The first extraction error, including a malformed catalog row, stops the scan and is retained as evidence. Later input is not enumerated. Jobs use <code>backoffLimit=0</code>; diagnose and submit a new request/execution identity to retry. Only bounded transport retries remain. Suffix filtering, blank lines, and comments are not failures.</p></div>
+        <p>A SourceSnapshot retains the named inventory and SHA-256 identity with enumeration and extraction errors. Evidence lives outside the online indices and browser startup data. Job TTL is operational cleanup, not public scan history. Credentials never belong in plan values, evidence documents, logs, indices, or query responses.</p>
+        <p>Further reading: <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/architecture.md">architecture</a>, <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/project-boundary.md">project boundaries</a>, and <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/self-test.md">deployment self-test</a>.</p>
+      </section>
+
+      <noscript>
+        <div class="callout callout-info"><p>JavaScript is disabled. The documentation and complete scan examples remain readable, but interactive schema tables, query fixtures, and copy buttons require JavaScript. Consult the canonical <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/index-contract.md">index contract</a>, <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/tree/main/contracts/index">mapping templates</a>, and <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/query-api.md">query contract</a>. Upstream links require a network connection.</p></div>
+      </noscript>
+      <p id="copy-status" role="status" aria-live="polite" aria-atomic="true"></p>
+    </main>
+  </div>
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <p>Astro Survey Atlas / Warehouse<br>Static documentation. Offline examples. No live service connection.</p>
+      <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse">Source &amp; canonical contracts on GitHub</a>
+    </div>
+  </footer>
+</body>
+</html>
