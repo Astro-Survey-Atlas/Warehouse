@@ -100,6 +100,7 @@
                 <exclude>.git/**</exclude>
                 <exclude>.codex/**</exclude>
                 <exclude>.opencode/**</exclude>
+                <exclude>site/.nojekyll</exclude>
                 <exclude>**/*.json</exclude>
                 <exclude>**/*.lock</exclude>
                 <exclude>**/*.tgz</exclude>

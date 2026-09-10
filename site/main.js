@@ -14,6 +14,9 @@
 (() => {
   "use strict";
 
+  const t = text => window.WarehouseI18n?.t(text) ?? text;
+  const translate = root => window.WarehouseI18n?.translate(root);
+
   // Illustrative data only, not a survey inventory or a live query result.
   const fileId = "5c74d6cae60fe3f77011eefefe40a9a1f87640d8fa4cfbab69995f830d8ebcee";
   const sourceUri = "https://example.org/survey/tile.fits";
@@ -86,7 +89,7 @@
     }
   };
 
-  function renderSchema(key) {
+  function renderSchema(key, selectedField) {
     const container = document.getElementById("schema-content");
     if (!container || !Object.hasOwn(schemas, key)) return;
     const schema = schemas[key];
@@ -143,12 +146,13 @@
         line.style.backgroundColor = selected ? "var(--brand-magenta-glow, #613047)" : "";
         line.style.fontWeight = selected ? "700" : "";
       });
-      container.querySelector("#schema-explanation").textContent = `${field[0]} (${field[1]}): ${field[2]}`;
+      container.querySelector("#schema-explanation").textContent = `${field[0]} (${field[1]}): ${t(field[2])}`;
     }
     container.querySelectorAll("button[data-field]").forEach(button => {
       button.addEventListener("click", () => selectField(button.dataset.field));
     });
-    selectField(schema.fields[0][0]);
+    selectField(selectedField ?? schema.fields[0][0]);
+    translate(container);
   }
 
   function renderQuery() {
@@ -161,7 +165,7 @@
     status.setAttribute("aria-live", "polite");
     if (!["exact", "estimated", "updating", "failed", "truncated"].includes(scenario)) {
       output.textContent = "";
-      status.textContent = "Choose an offline fixture. No request is sent.";
+      status.textContent = t("Choose an offline fixture. No request is sent.");
       return;
     }
 
@@ -207,7 +211,7 @@
           : "HTTP 200 example: exact cell occupancy at order 6, pixel 1024; response is not truncated. This is a candidate lookup, not polygon refinement.";
     }
     output.textContent = JSON.stringify(body, null, 2);
-    status.textContent = `Offline fixture only. No network request or live execution. ${explanation}`;
+    status.textContent = `${t("Offline fixture only. No network request or live execution.")} ${t(explanation)}`;
   }
 
   function init() {
@@ -217,6 +221,12 @@
     renderSchema("layer");
     document.getElementById("query-scenario")?.addEventListener("change", renderQuery);
     renderQuery();
+    document.addEventListener("warehouse-language-change", () => {
+      const key = document.querySelector('button[data-schema][aria-pressed="true"]')?.dataset.schema;
+      const field = document.querySelector('button[data-field][aria-pressed="true"]')?.dataset.field;
+      if (key) renderSchema(key, field);
+      renderQuery();
+    });
 
     // Delegation also covers the copy button recreated by schema selection.
     document.addEventListener("click", async event => {
@@ -232,6 +242,7 @@
       const target = document.getElementById(button.dataset.copyTarget);
       if (!target) {
         if (status) status.textContent = "Copy unavailable: the target element was not found.";
+        translate();
         return;
       }
       try {
@@ -241,6 +252,7 @@
       } catch {
         if (status) status.textContent = "Clipboard unavailable or permission denied. Select the displayed text and copy it manually.";
       }
+      translate();
     });
   }
 

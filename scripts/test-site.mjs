@@ -55,7 +55,7 @@ try {
   for (const url of [pathToFileURL(resolve(site, "index.html")).href, hosted]) {
     for (const width of [1440, 390, 320]) {
       const label = `${url.startsWith("file:") ? "file://" : "repository-subpath"} ${width}x900`;
-      const context = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: "block" });
+      const context = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: "block", colorScheme: "dark" });
       const page = await context.newPage();
       page.setDefaultTimeout(5000);
       const errors = [];
@@ -78,7 +78,6 @@ try {
         await page.goto(url, { waitUntil: "networkidle" });
         assert.equal(await page.title(), "Warehouse | Astro Survey Atlas");
         assert.equal(await page.locator('link[rel="stylesheet"]').evaluate(element => Boolean(element.sheet)), true);
-        const initialRequests = requests.length;
         const overflows = new Set();
         async function checkOverflow(state) {
           const dimensions = await page.evaluate(() => ({
@@ -87,10 +86,36 @@ try {
             body: document.body.scrollWidth
           }));
           if (dimensions.document > dimensions.viewport || dimensions.body > dimensions.viewport) {
-            overflows.add(JSON.stringify(dimensions));
+            overflows.add(`${state}: ${JSON.stringify(dimensions)}`);
           }
         }
         await checkOverflow("initial");
+        async function checkTheme(theme, language) {
+          assert.equal(await page.locator("html").getAttribute("data-theme"), theme);
+          assert.equal(await page.locator("html").evaluate(element => getComputedStyle(element).colorScheme), theme);
+          const text = language === "en" ? (theme === "light" ? "Dark mode" : "Light mode")
+            : (theme === "light" ? "\u591c\u95f4\u6a21\u5f0f" : "\u767d\u5929\u6a21\u5f0f");
+          assert.equal(await page.locator("#theme-toggle").textContent(), text);
+          assert.equal(await page.locator("#theme-toggle").getAttribute("aria-label"), text);
+          const logo = new URL(`assets/logo.svg${theme === "dark" ? "#night" : ""}`, url).href;
+          assert.equal(await page.locator(".brand-logo").evaluate(element => element.src), logo);
+          assert.equal(await page.locator('link[rel="icon"]').evaluate(element => element.href), logo);
+          await page.waitForFunction(() => {
+            const image = document.querySelector(".brand-logo");
+            return image.complete && image.naturalWidth > 0;
+          });
+          await checkOverflow(`${language} ${theme}`);
+        }
+        assert.equal(await page.locator("html").getAttribute("lang"), "zh-CN");
+        assert.equal(await page.locator("#language-toggle").textContent(), "English");
+        assert.match(await page.locator("#overview-title").textContent(), /\u627e\u5230\u6587\u4ef6/);
+        await checkTheme("light", "zh"); // Light is the default even with a dark OS preference.
+        const lightBackground = await page.locator("body").evaluate(element => getComputedStyle(element).backgroundColor);
+        await page.getByRole("button", { name: "Switch to English", exact: true }).click();
+        assert.equal(await page.locator("html").getAttribute("lang"), "en");
+        assert.match(await page.locator("#overview-title").textContent(), /Find the files/);
+        await checkTheme("light", "en");
+        const initialRequests = requests.length;
         for (const [key, properties] of Object.entries(schemas)) {
           await page.locator(`button[data-schema="${key}"]`).click();
           assert.equal(await page.locator('button[data-schema][aria-pressed="true"]').count(), 1);
@@ -168,10 +193,73 @@ try {
         }
         assert.deepEqual(external, [], "No external requests");
         assert.equal(requests.length, initialRequests, "Interactions must not send requests");
+        // Exercise re-rendered content and preserve technical payloads across both languages.
+        await page.locator('button[data-schema="coverage"]').click();
+        await page.locator('button[data-field="precision"]').click();
+        await page.locator("#query-scenario").selectOption("estimated");
+        const sample = await page.locator("#schema-sample").textContent();
+        const query = await page.locator("#query-output").textContent();
+        const englishExplanation = await page.locator("#schema-explanation").textContent();
+        const englishStatus = await page.locator("#query-status").textContent();
+        for (const language of ["zh", "en"]) {
+          await page.locator("#language-toggle").click();
+          assert.equal(await page.locator("html").getAttribute("lang"), language === "zh" ? "zh-CN" : "en");
+          assert.equal(await page.locator('button[data-schema][aria-pressed="true"]').getAttribute("data-schema"), "coverage");
+          assert.equal(await page.locator('button[data-field][aria-pressed="true"]').getAttribute("data-field"), "precision");
+          assert.equal(await page.locator("#query-scenario").inputValue(), "estimated");
+          assert.equal(await page.locator("#schema-sample").textContent(), sample);
+          assert.equal(await page.locator("#query-output").textContent(), query);
+          const explanation = await page.locator("#schema-explanation").textContent();
+          const status = await page.locator("#query-status").textContent();
+          if (language === "zh") {
+            assert.match(explanation, /\u8986\u76d6\u7cbe\u5ea6/);
+            assert.match(status, /\u4ec5\u4e3a\u79bb\u7ebf\u793a\u4f8b/);
+            assert.equal(await page.locator(".schema-table th").first().textContent(), "\u5b57\u6bb5");
+            // New selections must also render in Chinese, not only existing content.
+            await page.locator('button[data-schema="file"]').click();
+            await page.locator('button[data-field="file_name"]').click();
+            assert.match(await page.locator("#schema-explanation").textContent(), /\u5df2\u53d1\u73b0\u6e90\u6587\u4ef6\u7684\u540d\u79f0/);
+            await page.locator("#query-scenario").selectOption("failed");
+            assert.match(await page.locator("#query-status").textContent(), /FAILED \u8868\u793a\u4e0d\u53ef\u7528/);
+            await page.locator('[data-copy-target="schema-sample"]').click();
+            assert.match(await page.locator("#copy-status").textContent(), /\u526a\u8d34\u677f\u4e0d\u53ef\u7528/);
+            await page.locator('button[data-schema="coverage"]').click();
+            await page.locator('button[data-field="precision"]').click();
+            await page.locator("#query-scenario").selectOption("estimated");
+          } else {
+            assert.equal(explanation, englishExplanation);
+            assert.equal(status, englishStatus);
+            assert.equal(await page.locator(".schema-table th").first().textContent(), "Field");
+            assert.match(await page.locator("#copy-status").textContent(), /Clipboard unavailable or permission denied/);
+          }
+          await checkTheme("light", language);
+        }
+        // The preference renderer reassigns the local logo on language changes.
+        const logoAsset = new URL("assets/logo.svg", url).href;
+        assert.deepEqual(requests.slice(initialRequests).filter(request => request.split("#")[0] !== logoAsset), [],
+          "Preference interactions may only request the local logo");
+        await page.locator("#theme-toggle").click();
+        await checkTheme("dark", "en");
+        assert.notEqual(await page.locator("body").evaluate(element => getComputedStyle(element).backgroundColor), lightBackground);
+        assert.deepEqual(requests.slice(initialRequests).filter(request => request.split("#")[0] !== logoAsset), [],
+          "Theme interactions may only request the local logo");
+        await page.reload({ waitUntil: "networkidle" });
+        assert.equal(await page.locator("html").getAttribute("lang"), "en");
+        await checkTheme("dark", "en");
+        await page.locator("#language-toggle").click();
+        await checkTheme("dark", "zh");
+        await page.locator("#theme-toggle").click();
+        await checkTheme("light", "zh");
+        await page.reload({ waitUntil: "networkidle" });
+        assert.equal(await page.locator("html").getAttribute("lang"), "zh-CN");
+        assert.match(await page.locator("#overview-title").textContent(), /\u627e\u5230\u6587\u4ef6/);
+        await checkTheme("light", "zh");
+        assert.equal(await page.locator("body").evaluate(element => getComputedStyle(element).backgroundColor), lightBackground);
+        assert.deepEqual(external, [], "No external requests including theme changes and reloads");
         assert.deepEqual(errors, [], "No browser errors or failed local resources");
         console.log(`PASS ${label}: functional checks and request/error monitoring`);
         assert.equal(overflows.size, 0, `horizontal page overflow: ${[...overflows].join(", ")}`);
-        console.log(`PASS ${label}: 3 contract schemas/37 fields, 5 queries, all copy controls x 3 clipboard modes, no external/interaction requests, no overflow/errors`);
+        console.log(`PASS ${label}: 3 contract schemas/37 fields in English, 5 queries, all copy controls x 3 clipboard modes, light default, dark toggle, bilingual dynamic content, preference reloads, logo fragments, no external/content-interaction requests or overflow/errors`);
       } catch (error) {
         failures.push(`${label}: ${error.stack}`);
         console.error(`FAIL ${label}: ${error.message}`);

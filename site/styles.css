@@ -1,23 +1,36 @@
+/*
+ * Copyright 2026 Astro Survey Atlas contributors.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 :root {
   --brand-indigo: #2c3792;
   --brand-magenta: #f01951;
   --brand-magenta-glow: rgba(240, 25, 81, 0.25);
   --brand-indigo-glow: rgba(44, 55, 146, 0.35);
 
-  --bg-primary: #25282d;
-  --bg-surface: #2d3137;
-  --bg-card: #363b42;
-  --bg-card-hover: #3e444c;
-  --bg-input: #181a1f;
+  --bg-primary: #ffffff;
+  --bg-surface: #f5f6fa;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f8f9fc;
+  --bg-input: #ffffff;
   --bg-code: #16171b;
 
-  --border-subtle: rgba(235, 238, 242, 0.16);
+  --border-subtle: rgba(30, 40, 70, 0.14);
   --border-active: rgba(240, 25, 81, 0.4);
   --border-focus: rgba(140, 160, 255, 0.5);
 
-  --text-main: #f4f5f6;
-  --text-muted: #b7bbc2;
-  --text-dim: #aab0bb;
+  --text-main: #182033;
+  --text-muted: #515d70;
+  --text-dim: #657086;
 
   --accent-cyan: #38bdf8;
   --accent-green: #22c55e;
@@ -32,8 +45,8 @@
   --radius-lg: 14px;
   --radius-full: 9999px;
 
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 16px -2px rgba(0, 0, 0, 0.5), 0 2px 6px -1px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 2px rgba(24, 32, 51, 0.04);
+  --shadow-md: 0 8px 28px rgba(24, 32, 51, 0.07);
   --shadow-glow: 0 0 25px -5px var(--brand-magenta-glow);
 }
 
@@ -45,7 +58,7 @@
 
 html {
   scroll-behavior: smooth;
-  color-scheme: dark;
+  color-scheme: light;
   background-color: var(--bg-primary);
 }
 
@@ -950,6 +963,52 @@ pre code {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition: none !important; }
 }
+
+/* Theme-specific contrast keeps code dark while the reading surface stays light. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-primary: #111827;
+  --bg-surface: #182234;
+  --bg-card: #1c283b;
+  --bg-card-hover: #233149;
+  --bg-input: #111827;
+  --border-subtle: rgba(190, 204, 231, 0.18);
+  --text-main: #eef2ff;
+  --text-muted: #bcc7da;
+  --text-dim: #a4b2c9;
+}
+.site-header { background: var(--bg-primary); }
+.header-inner { gap: 1.25rem; flex-wrap: wrap; }
+.nav-links { flex-wrap: wrap; gap: 0.75rem 1rem; }
+.hero-title { background: none; -webkit-text-fill-color: var(--text-main); }
+.brand-logo { height: 36px; }
+.field-name { color: var(--text-main); background: transparent; cursor: pointer; }
+.schema-table td { border-bottom-color: var(--border-subtle); }
+.schema-body > pre, .code-content, #query-output { color: #dce4f2; }
+#copy-status:not(:empty) { color: #eef2ff; }
+html:not([data-theme="dark"]) code { color: #b31548; }
+html:not([data-theme="dark"]) pre code { color: inherit; }
+html:not([data-theme="dark"]) .hero-pill,
+html:not([data-theme="dark"]) .mode-badge,
+html:not([data-theme="dark"]) .callout-info {
+  color: #2c3792;
+  background: #eef0fb;
+  border-color: #d9def3;
+}
+html:not([data-theme="dark"]) .callout-warning { color: #805400; }
+html:not([data-theme="dark"]) .status-active { color: #16713c; }
+html:not([data-theme="dark"]) .status-updating { color: #805400; }
+html:not([data-theme="dark"]) .status-failed { color: #b32637; }
+html:not([data-theme="dark"]) .field-type { color: #086789; }
+html:not([data-theme="dark"]) .field-role { color: #753bb1; }
+html:not([data-theme="dark"]) .section-tag,
+html:not([data-theme="dark"]) .sidebar-item.active a,
+html:not([data-theme="dark"]) .schema-tab.active,
+html:not([data-theme="dark"]) .field-name.active { color: #b31548; }
+html:not([data-theme="dark"]) .main-content p a { color: #2c3792; }
+html:not([data-theme="dark"]) .btn-secondary:hover { border-color: #adb6cd; }
+html:not([data-theme="dark"]) .btn-outline { color: #b31548; }
+html:not([data-theme="dark"]) :focus-visible { outline-color: #2c3792; }
 
 /* Footer */
 .site-footer {
