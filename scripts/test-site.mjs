@@ -28,7 +28,7 @@ const schemas = Object.fromEntries(await Promise.all(["layer", "file", "coverage
   const contract = JSON.parse(await readFile(resolve(root, `contracts/index/${key}-v1.json`), "utf8"));
   return [key, contract.template.mappings.properties];
 })));
-const prefix = "/Astro-Survey-Atlas-Warehouse/";
+const prefix = "/Warehouse/";
 const server = createServer(async (req, res) => {
   try {
     const pathname = new URL(req.url, "http://localhost").pathname;
@@ -108,12 +108,12 @@ try {
         }
         assert.equal(await page.locator("html").getAttribute("lang"), "zh-CN");
         assert.equal(await page.locator("#language-toggle").textContent(), "English");
-        assert.match(await page.locator("#overview-title").textContent(), /\u627e\u5230\u6587\u4ef6/);
+        assert.match(await page.locator("#overview-title").textContent(), /\u626b\u63cf\u4f60\u7684\u6570\u636e\u6e90/);
         await checkTheme("light", "zh"); // Light is the default even with a dark OS preference.
         const lightBackground = await page.locator("body").evaluate(element => getComputedStyle(element).backgroundColor);
         await page.getByRole("button", { name: "Switch to English", exact: true }).click();
         assert.equal(await page.locator("html").getAttribute("lang"), "en");
-        assert.match(await page.locator("#overview-title").textContent(), /Find the files/);
+        assert.match(await page.locator("#overview-title").textContent(), /Scan your data sources/);
         await checkTheme("light", "en");
         const initialRequests = requests.length;
         for (const [key, properties] of Object.entries(schemas)) {
@@ -252,7 +252,7 @@ try {
         await checkTheme("light", "zh");
         await page.reload({ waitUntil: "networkidle" });
         assert.equal(await page.locator("html").getAttribute("lang"), "zh-CN");
-        assert.match(await page.locator("#overview-title").textContent(), /\u627e\u5230\u6587\u4ef6/);
+        assert.match(await page.locator("#overview-title").textContent(), /\u626b\u63cf\u4f60\u7684\u6570\u636e\u6e90/);
         await checkTheme("light", "zh");
         assert.equal(await page.locator("body").evaluate(element => getComputedStyle(element).backgroundColor), lightBackground);
         assert.deepEqual(external, [], "No external requests including theme changes and reloads");

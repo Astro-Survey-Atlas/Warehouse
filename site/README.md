@@ -29,7 +29,7 @@ translated. Translation strings live in `i18n.js`; theme behavior is in `theme.j
 In repository Settings > Pages, choose **GitHub Actions** as the source.
 The `Documentation Pages` workflow publishes only `site/` on matching pushes
 to `main`, or on manual dispatch. The expected project URL is
-<https://Astro-Survey-Atlas.github.io/Astro-Survey-Atlas-Warehouse/>.
+<https://astro-survey-atlas.github.io/Warehouse/>.
 Adding the workflow does not itself enable Pages or publish this worktree.
 Relative asset paths support both project Pages and direct local opening.
 

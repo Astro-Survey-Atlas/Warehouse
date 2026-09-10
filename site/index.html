@@ -15,7 +15,7 @@ limitations under the License.
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Warehouse technical documentation: scan astronomical file metadata, maintain current sky coverage, and query explicit HEALPix cells.">
+  <meta name="description" content="Warehouse technical documentation: scan local, S3-compatible, and OSS astronomical sources into Elasticsearch file and sky-coverage indices.">
   <title>Warehouse | Astro Survey Atlas</title>
   <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
@@ -35,7 +35,7 @@ limitations under the License.
         <ul class="nav-links">
           <li><a class="nav-link" href="#submit">Quick start</a></li>
           <li><a class="nav-link" href="#indices">Index explorer</a></li>
-          <li><a class="btn btn-secondary btn-sm" href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse">GitHub repository</a></li>
+          <li><a class="btn btn-secondary btn-sm" href="https://github.com/Astro-Survey-Atlas/Warehouse">GitHub repository</a></li>
           <li><button type="button" id="language-toggle" class="btn btn-secondary btn-sm" aria-label="Switch to English" hidden>English</button></li>
           <li><button type="button" id="theme-toggle" class="btn btn-secondary btn-sm" hidden>Toggle theme</button></li>
         </ul>
@@ -59,53 +59,68 @@ limitations under the License.
       <div class="sidebar-group">
         <p class="sidebar-title">Canonical contracts</p>
         <ul class="sidebar-list">
-          <li class="sidebar-item"><a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/scan-plan.md">ScanPlan v2</a></li>
-          <li class="sidebar-item"><a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/operator.md">Operator</a></li>
-          <li class="sidebar-item"><a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/query-api.md">Query API</a></li>
-          <li class="sidebar-item"><a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/index-contract.md">Index contract</a></li>
+          <li class="sidebar-item"><a href="https://github.com/Astro-Survey-Atlas/Warehouse/blob/main/docs/scan-plan.md">ScanPlan v2</a></li>
+          <li class="sidebar-item"><a href="https://github.com/Astro-Survey-Atlas/Warehouse/blob/main/docs/operator.md">Operator</a></li>
+          <li class="sidebar-item"><a href="https://github.com/Astro-Survey-Atlas/Warehouse/blob/main/docs/query-api.md">Query API</a></li>
+          <li class="sidebar-item"><a href="https://github.com/Astro-Survey-Atlas/Warehouse/blob/main/docs/index-contract.md">Index contract</a></li>
+        </ul>
+      </div>
+      <div class="sidebar-group">
+        <p class="sidebar-title">Related documentation</p>
+        <ul class="sidebar-list">
+          <li class="sidebar-item"><a href="https://github.com/Astro-Survey-Atlas/Assets/blob/main/docs/api-reference.md">Assets API</a></li>
+          <li class="sidebar-item"><a href="https://github.com/Astro-Survey-Atlas/Workspace/blob/main/docs/api-reference.md">Workspace API</a></li>
+          <li class="sidebar-item"><a href="https://github.com/Astro-Survey-Atlas/MOC-Core-SDK/blob/main/docs/moc-core-contract.md">MOC Core SDK</a></li>
         </ul>
       </div>
     </aside>
 
     <main id="main-content" class="main-content" tabindex="-1">
       <section id="overview" class="hero doc-section" aria-labelledby="overview-title">
-        <p class="hero-pill">Astro Survey Atlas / Spatial directory</p>
-        <h1 id="overview-title" class="hero-title">Find the files.<br>Keep the sky in context.</h1>
-        <p class="hero-desc">Which files contain data for this part of the sky? Warehouse helps your application answer that question. Give it a file source to scan, then query sky cells to get matching files, their original locations, and the coverage behind each match.</p>
+        <p class="hero-pill">Astro Survey Atlas / Scan engine</p>
+        <h1 id="overview-title" class="hero-title">Scan your data sources.<br>Build a searchable sky index.</h1>
+        <p class="hero-desc">Warehouse is a scanning tool for astronomical data. Point it at a local directory, an S3-compatible bucket, or OSS storage. It inventories every file it finds, extracts each file's sky coverage from supported metadata, and writes the current results into Elasticsearch ast_* indices, retaining evidence for every scan. It never reads or copies scientific arrays.</p>
+        <p class="hero-desc">Once a scan lands in the index, the sky-position questions come from your application: which files cover this region, where do they live, and why did they match. Assets asks this in production; your code can query the same indices.</p>
         <div class="hero-buttons">
           <a class="btn btn-primary" href="#submit">Submit your first scan</a>
-          <a class="btn btn-secondary" href="#query">Explore a query response</a>
+          <a class="btn btn-secondary" href="#indices">See what lands in the index</a>
         </div>
         <div class="arch-diagram" aria-label="Scan data flow">
           <div class="arch-nodes">
-            <div class="arch-node"><p class="arch-node-name">Choose your data</p><p class="arch-node-role">CoverageLayer + source + mode</p></div>
+            <div class="arch-node"><p class="arch-node-name">Your data source</p><p class="arch-node-role">local / S3-compatible / OSS</p></div>
             <span class="arch-arrow">scan</span>
-            <div class="arch-node highlight-warehouse"><p class="arch-node-name">Warehouse</p><p class="arch-node-role">FileAsset + SpatialCoverage + evidence</p></div>
-            <span class="arch-arrow">lookup</span>
-            <div class="arch-node"><p class="arch-node-name">Current coverage</p><p class="arch-node-role">ACTIVE layers in ast_* indices</p></div>
+            <div class="arch-node highlight-warehouse"><p class="arch-node-name">Warehouse</p><p class="arch-node-role">file inventory + sky coverage + evidence</p></div>
+            <span class="arch-arrow">write</span>
+            <div class="arch-node"><p class="arch-node-name">ast_* indices</p><p class="arch-node-role">current state in Elasticsearch</p></div>
+            <span class="arch-arrow">query</span>
+            <div class="arch-node"><p class="arch-node-name">Your application</p><p class="arch-node-role">Assets, or your own code</p></div>
           </div>
         </div>
-        <h2>What you can build with Warehouse</h2>
+        <h2>What Warehouse does with your data</h2>
         <div class="grid-3">
-          <article class="card"><h3 class="card-title">Make files searchable by sky position</h3><p class="card-desc">Scan a local directory or object-storage source. Warehouse records the files it finds and extracts their sky coverage from supported metadata.</p></article>
-          <article class="card"><h3 class="card-title">Find candidate files for a region</h3><p class="card-desc">Choose the survey layers and HEALPix cells you want to search. Get a deduplicated file list with source URIs and the cells that matched.</p></article>
-          <article class="card"><h3 class="card-title">Explain each match</h3><p class="card-desc">Use the coverage method and precision to show why a file was returned. Scan summaries and detailed evidence help you investigate missing coverage or failed scans.</p></article>
+          <article class="card"><h3 class="card-title">Inventory the files</h3><p class="card-desc">One scan walks one source and records every discovered file as a FileAsset with its canonical URI, name, size, and timestamps.</p></article>
+          <article class="card"><h3 class="card-title">Extract sky coverage from metadata</h3><p class="card-desc">One extraction mode per scan reads WCS headers, catalog RA/Dec columns, or explicit HEALPix cells. Every result carries its precision: exact, estimated, or entrypoint-only.</p></article>
+          <article class="card"><h3 class="card-title">Publish current state to Elasticsearch</h3><p class="card-desc">Each scan refreshes one CoverageLayer in the ast_* indices. Only ACTIVE layers are queryable; failed scans stay visible with errors and evidence instead of serving stale coverage.</p></article>
         </div>
-        <p>A CoverageLayer groups one survey, release, and product for scanning and querying. Your application chooses the layers to search; Warehouse returns file metadata and coverage. To open or download a file, use its original source location with the access your application already has.</p>
+        <p>A CoverageLayer groups one survey, release, and product; one scan covers one source, one layer, and one extraction mode. To answer "which files cover this part of the sky", query the indices a scan produced: Assets reads them in production, and the diagnostic Query API lets you try the same lookup.</p>
       </section>
 
-      <section id="capabilities" class="doc-section" aria-labelledby="capabilities-title">
+        <section id="capabilities" class="doc-section" aria-labelledby="capabilities-title">
         <p class="section-tag">02 / Extraction</p>
         <h2 id="capabilities-title">Choose how to read your sky coverage</h2>
-        <p class="section-lead">Choose the mode that matches the spatial information in your files. Each ScanPlan covers one source and one CoverageLayer, using one extraction mode. Warehouse checks the plan before accessing the source.</p>
         <div class="grid-2">
           <article class="mode-card"><span class="mode-badge">fits-wcs</span><h3 class="card-title">Image and cube footprints</h3><p class="card-desc">Reads supported WCS headers and rasterizes at the required <code>outputOrder</code>. Sampled coverage is <code>estimated</code>; there is no silent center-point fallback.</p></article>
           <article class="mode-card"><span class="mode-badge">fits-header-position</span><h3 class="card-title">Header position evidence</h3><p class="card-desc">Maps an explicit FITS header position at the required <code>outputOrder</code>. Precision is <code>entrypoint-only</code>, not an instrument footprint.</p></article>
           <article class="mode-card"><span class="mode-badge">catalog-radec</span><h3 class="card-title">Catalog occupancy</h3><p class="card-desc">Reads configured RA and Dec columns in ICRS degrees and maps them to NESTED cells at <code>outputOrder</code>. Coverage describes file occupancy, not a per-row object index.</p></article>
           <article class="mode-card"><span class="mode-badge">catalog-healpix</span><h3 class="card-title">Explicit source cells</h3><p class="card-desc">Requires a pixel column and exactly one fixed source order or order column. Preserves explicit NESTED order/ipix; an absent source order is never assumed to be 8.</p></article>
         </div>
+        <details class="mode-guide">
+          <summary>What if one folder contains multiple kinds of files?</summary>
+          <p>Astronomical data is usually separated by product type into directories or object prefixes. Create a ScanPlan for one directory or prefix and choose the extraction mode that matches that batch of files. You can filter by suffixes and exclude README/checksum files or other auxiliary inputs. Only when one path mixes different spatial-recording methods do you need to split into multiple scan plans.</p>
+        </details>
         <h3>Local, S3-compatible, and OSS sources</h3>
         <p>The <code>local</code> connector accepts a directory or single file. S3-compatible and OSS endpoints use the AWS SDK adapter, with canonical <code>s3://bucket/key</code> or <code>oss://bucket/key</code> identities. Supply a signing region when required. Credential references point to environment variables or mounted files; never put credential values in a plan.</p>
+        <div class="callout callout-info"><p><strong>Databases (JDBC) are planned, not supported yet.</strong> The current ScanPlan accepts local, S3-compatible, and OSS sources only. Until a JDBC connector lands, scan catalog databases with Workspace, whose connectors include JDBC and write to its own index.</p></div>
         <div class="callout callout-info"><p><strong>Metadata only.</strong> FITS extraction reads headers, and catalogs expose configured spatial columns. Warehouse never reads or copies scientific image, spectrum, or cube arrays. Unsupported formats remain discovered FileAssets with evidence and no invented coverage.</p></div>
         <p>Declare modality explicitly: <code>image</code>, <code>spectrum</code>, <code>cube</code>, <code>catalog</code>, <code>timeseries</code>, <code>visibility</code>, <code>event</code>, or <code>other</code>.</p>
       </section>
@@ -213,7 +228,7 @@ spec:
       outputPath: /var/lib/atlas-evidence/local-catalog-example</code></pre>
         </div>
         <p>The endpoint and image are example deployment settings, not universal defaults. This request assumes a sink without authentication; authenticated deployments must add namespace-local Secret bindings and plan credential references. Source paths must stay inside the declared source mount, and evidence paths inside the evidence mount. Host paths and cross-namespace claims are not supported.</p>
-        <p>Upstream examples: <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/deploy/kubernetes/scanrequest-local.example.yaml">complete local request</a>, <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/deploy/kubernetes/scanrequest-oss.example.yaml">OSS request with Secret references</a>, and <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/deploy/helm/README.md">Helm installation</a>.</p>
+        <p>Upstream examples: <a href="https://github.com/Astro-Survey-Atlas/Warehouse/blob/main/deploy/kubernetes/scanrequest-local.example.yaml">complete local request</a>, <a href="https://github.com/Astro-Survey-Atlas/Warehouse/blob/main/deploy/kubernetes/scanrequest-oss.example.yaml">OSS request with Secret references</a>, and <a href="https://github.com/Astro-Survey-Atlas/Warehouse/blob/main/deploy/helm/README.md">Helm installation</a>.</p>
 
         <h3>3. Observe execution and evidence</h3>
         <div class="code-box">
@@ -300,7 +315,7 @@ curl --fail-with-body --get "$QUERY_API/v2/files/healpix" \
             <p>The offline explorer displays mapping fields and illustrative documents. Read the canonical templates for the authoritative field definitions.</p>
           </div>
         </div>
-        <p>Canonical sources: <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/tree/main/contracts/index">strict Elasticsearch templates</a> and <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/index-contract.md">index identity, write, and read contract</a>.</p>
+        <p>Canonical sources: <a href="https://github.com/Astro-Survey-Atlas/Warehouse/tree/main/contracts/index">strict Elasticsearch templates</a> and <a href="https://github.com/Astro-Survey-Atlas/Warehouse/blob/main/docs/index-contract.md">index identity, write, and read contract</a>.</p>
       </section>
 
       <section id="semantics" class="doc-section" aria-labelledby="semantics-title">
@@ -324,7 +339,7 @@ curl --fail-with-body --get "$QUERY_API/v2/files/healpix" \
       </section>
 
       <noscript>
-        <div class="callout callout-info"><p>JavaScript is disabled. The documentation and complete scan examples remain readable, but interactive schema tables, query fixtures, and copy buttons require JavaScript. Consult the canonical <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/index-contract.md">index contract</a>, <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/tree/main/contracts/index">mapping templates</a>, and <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse/blob/main/docs/query-api.md">query contract</a>. Upstream links require a network connection.</p></div>
+        <div class="callout callout-info"><p>JavaScript is disabled. The documentation and complete scan examples remain readable, but interactive schema tables, query fixtures, and copy buttons require JavaScript. Consult the canonical <a href="https://github.com/Astro-Survey-Atlas/Warehouse/blob/main/docs/index-contract.md">index contract</a>, <a href="https://github.com/Astro-Survey-Atlas/Warehouse/tree/main/contracts/index">mapping templates</a>, and <a href="https://github.com/Astro-Survey-Atlas/Warehouse/blob/main/docs/query-api.md">query contract</a>. Upstream links require a network connection.</p></div>
       </noscript>
       <p id="copy-status" role="status" aria-live="polite" aria-atomic="true"></p>
     </main>
@@ -332,7 +347,7 @@ curl --fail-with-body --get "$QUERY_API/v2/files/healpix" \
   <footer class="site-footer">
     <div class="footer-inner">
       <p>Astro Survey Atlas / Warehouse<br>Static documentation. Offline examples. No live service connection.</p>
-      <a href="https://github.com/Astro-Survey-Atlas/Astro-Survey-Atlas-Warehouse">Source &amp; canonical contracts on GitHub</a>
+      <a href="https://github.com/Astro-Survey-Atlas/Warehouse">Source &amp; canonical contracts on GitHub</a>
     </div>
   </footer>
 </body>

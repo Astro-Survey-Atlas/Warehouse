@@ -13,7 +13,7 @@
     "openai": {
       "options": {
         "baseURL": "{env:OPENAI_BASE_URL}/v1",
-        "apiKey": "{env:LINGSU_OPENAI_API_KEY}",
+        "apiKey": "{env:CAFE_OPENAI_API_KEY}",
         "headerTimeout": 60000,
         "timeout": 600000,
         "chunkTimeout": 120000
@@ -57,6 +57,22 @@
           "limit": {
             "context": 272000,
             "output": 128000
+          },
+          "options": {
+            "store": false
+          },
+          "variants": {
+            "low": {},
+            "medium": {},
+            "high": {},
+            "xhigh": {}
+          }
+        },
+        "gpt-5.3-codex-spark": {
+          "name": "GPT-5.3 Codex Spark",
+          "limit": {
+            "context": 128000,
+            "output": 32000
           },
           "options": {
             "store": false
