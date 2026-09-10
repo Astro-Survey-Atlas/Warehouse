@@ -2,6 +2,13 @@
   "model": "openai/gpt-5.6-sol",
   "small_model": "openai/gpt-5.6-luna",
   "yolo": true,
+  "enabled_providers": [
+    "openai",
+    "grok",
+    "gemini",
+    "backup",
+    "deepseek"
+  ],
   "provider": {
     "openai": {
       "options": {
@@ -90,7 +97,7 @@
         }
       }
     },
-    "wzzzz": {
+    "backup": {
       "options": {
         "baseURL": "https://sub2api.home.geekcity.tech:32443/v1",
         "apiKey": "s",
