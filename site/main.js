@@ -22,6 +22,15 @@
   const sourceUri = "https://example.org/survey/tile.fits";
   const layerId = "example-r1-catalog";
   const timestamp = "2026-09-01T00:00:00Z";
+  const baseDocumentTitle = "Warehouse | Astro Survey Atlas";
+  const sidebarItemBySectionId = new Map();
+  const sectionTitleKeyById = new Map();
+  const sectionById = new Map();
+  let activeSectionId = "overview";
+  const resolveSectionTitle = sectionId => {
+    const titleKey = sectionTitleKeyById.get(sectionId);
+    return titleKey ? t(titleKey) : null;
+  };
 
   // Field tuples: mapped name, Elasticsearch type, explanation, sample value.
   // Keep aligned with contracts/index/{layer,file,coverage}-v1.json.
@@ -214,6 +223,115 @@
     status.textContent = `${t("Offline fixture only. No network request or live execution.")} ${t(explanation)}`;
   }
 
+  function registerSectionNavigation() {
+    document.querySelectorAll('.sidebar .sidebar-item > a[href^="#"]').forEach(link => {
+      const sectionId = link.getAttribute("href")?.slice(1);
+      if (!sectionId) return;
+      sidebarItemBySectionId.set(sectionId, link.closest(".sidebar-item"));
+      sectionTitleKeyById.set(sectionId, link.textContent?.trim() || null);
+      const section = document.getElementById(sectionId);
+      if (section instanceof HTMLElement) {
+        sectionTitleKeyById.set(sectionId, section.dataset.titleKey || sectionTitleKeyById.get(sectionId));
+        sectionById.set(sectionId, section);
+      }
+    });
+    if (!sidebarItemBySectionId.size) return;
+
+    const sectionEntries = Array.from(sidebarItemBySectionId.keys())
+      .map(sectionId => ({
+        sectionId,
+        titleKey: sectionTitleKeyById.get(sectionId),
+        section: sectionById.get(sectionId)
+      }))
+      .filter(({ section }) => section instanceof HTMLElement);
+    if (!sectionEntries.length) return;
+    sectionEntries.sort((a, b) => a.section.offsetTop - b.section.offsetTop);
+
+    const titleKeyById = Object.fromEntries(sectionEntries.map(({ sectionId, titleKey }) => [sectionId, titleKey]));
+
+    const navigateFromSidebar = event => {
+      if (event.defaultPrevented || (event.button !== undefined && event.button !== 0) || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const link = event.currentTarget;
+      const sectionId = link.getAttribute("href")?.slice(1);
+      const section = sectionById.get(sectionId);
+      if (!section) return;
+      event.preventDefault();
+      history.pushState(null, "", `#${sectionId}`);
+      jumpToSection(sectionId);
+    };
+
+    const updateActiveSection = sectionId => {
+      if (!sidebarItemBySectionId.has(sectionId)) return;
+      activeSectionId = sectionId;
+      sidebarItemBySectionId.forEach(item => {
+        item.classList.remove("active");
+        const anchor = item.querySelector("a");
+        if (anchor) anchor.removeAttribute("aria-current");
+      });
+      const activeItem = sidebarItemBySectionId.get(sectionId);
+      if (!activeItem) return;
+      activeItem.classList.add("active");
+      const activeAnchor = activeItem.querySelector("a");
+      if (activeAnchor) activeAnchor.setAttribute("aria-current", "page");
+
+      const sectionTitle = titleKeyById[sectionId] ? t(titleKeyById[sectionId]) : null;
+      const normalizedTitle = sectionTitle ? `${sectionTitle} | ${baseDocumentTitle}` : baseDocumentTitle;
+      if (document.title !== normalizedTitle) document.title = normalizedTitle;
+    };
+
+    const jumpToSection = sectionId => {
+      const section = sectionById.get(sectionId);
+      if (!(section instanceof HTMLElement)) return false;
+      updateActiveSection(sectionId);
+      section.scrollIntoView({ behavior: "instant", block: "start" });
+      updateActiveSection(sectionId);
+      return true;
+    };
+
+    sectionEntries.forEach(({ sectionId }) => {
+      sidebarItemBySectionId.get(sectionId)?.querySelector("a")?.addEventListener("click", navigateFromSidebar);
+    });
+
+    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+
+    const updateFromScroll = () => {
+      const scrollPosition = window.scrollY + 140;
+      let matchedSectionId = sectionEntries[0].sectionId;
+
+      for (let i = 1; i < sectionEntries.length; i += 1) {
+        const previous = sectionEntries[i - 1];
+        const current = sectionEntries[i];
+        if (scrollPosition < current.section.offsetTop) {
+          matchedSectionId = previous.sectionId;
+          break;
+        }
+        matchedSectionId = current.sectionId;
+      }
+      updateActiveSection(matchedSectionId);
+    };
+
+    const onScroll = () => {
+      if (onScroll.scheduled) return;
+      onScroll.scheduled = true;
+      requestAnimationFrame(() => {
+        updateFromScroll();
+        onScroll.scheduled = false;
+      });
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    window.addEventListener("hashchange", () => {
+      const sectionId = (window.location.hash || `#${sectionEntries[0].sectionId}`).slice(1);
+      if (!jumpToSection(sectionId)) updateFromScroll();
+    });
+    window.addEventListener("popstate", () => {
+      const sectionId = (window.location.hash || `#${sectionEntries[0].sectionId}`).slice(1);
+      if (!jumpToSection(sectionId)) updateFromScroll();
+    });
+    updateFromScroll();
+  }
+
   function init() {
     document.querySelectorAll("button[data-schema]").forEach(button => {
       button.addEventListener("click", () => renderSchema(button.dataset.schema));
@@ -222,6 +340,12 @@
     document.getElementById("query-scenario")?.addEventListener("change", renderQuery);
     renderQuery();
     document.addEventListener("warehouse-language-change", () => {
+      if (activeSectionId && sidebarItemBySectionId.size) {
+        const sectionTitle = resolveSectionTitle(activeSectionId);
+        if (sectionTitle) document.title = `${sectionTitle} | ${baseDocumentTitle}`;
+      } else {
+        document.title = baseDocumentTitle;
+      }
       const key = document.querySelector('button[data-schema][aria-pressed="true"]')?.dataset.schema;
       const field = document.querySelector('button[data-field][aria-pressed="true"]')?.dataset.field;
       if (key) renderSchema(key, field);
@@ -254,6 +378,8 @@
       }
       translate();
     });
+
+    registerSectionNavigation();
   }
 
   if (document.readyState === "loading") {

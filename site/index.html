@@ -48,12 +48,12 @@ limitations under the License.
       <nav aria-label="On this page" class="sidebar-group">
         <p class="sidebar-title">Documentation</p>
         <ul class="sidebar-list">
-          <li class="sidebar-item active"><a href="#overview">01 / Overview</a></li>
-          <li class="sidebar-item"><a href="#capabilities">02 / Capabilities</a></li>
-          <li class="sidebar-item"><a href="#submit">03 / Submit a scan</a></li>
-          <li class="sidebar-item"><a href="#query">04 / Query coverage</a></li>
-          <li class="sidebar-item"><a href="#indices">05 / Index explorer</a></li>
-          <li class="sidebar-item"><a href="#semantics">06 / Precision &amp; state</a></li>
+          <li class="sidebar-item active"><a href="#overview">01 / What Warehouse does with your data</a></li>
+          <li class="sidebar-item"><a href="#capabilities">02 / Choose how to read your sky coverage</a></li>
+          <li class="sidebar-item"><a href="#submit">03 / Run a scan, then check the result</a></li>
+          <li class="sidebar-item"><a href="#query">04 / Ask for cells. Receive file candidates.</a></li>
+          <li class="sidebar-item"><a href="#indices">05 / Where to find layers, files, and coverage</a></li>
+          <li class="sidebar-item"><a href="#semantics">06 / How much does a match tell you?</a></li>
         </ul>
       </nav>
       <div class="sidebar-group">
@@ -76,7 +76,7 @@ limitations under the License.
     </aside>
 
     <main id="main-content" class="main-content" tabindex="-1">
-      <section id="overview" class="hero doc-section" aria-labelledby="overview-title">
+      <section id="overview" class="hero doc-section" aria-labelledby="overview-title" data-title-key="01 / What Warehouse does with your data">
         <p class="hero-pill">Astro Survey Atlas / Scan engine</p>
         <h1 id="overview-title" class="hero-title">Scan your data sources.<br>Build a searchable sky index.</h1>
         <p class="hero-desc">Warehouse is a scanning tool for astronomical data. Point it at a local directory, an S3-compatible bucket, or OSS storage. It inventories every file it finds, extracts each file's sky coverage from supported metadata, and writes the current results into Elasticsearch ast_* indices, retaining evidence for every scan. It never reads or copies scientific arrays.</p>
@@ -88,11 +88,11 @@ limitations under the License.
         <div class="arch-diagram" aria-label="Scan data flow">
           <div class="arch-nodes">
             <div class="arch-node"><p class="arch-node-name">Your data source</p><p class="arch-node-role">local / S3-compatible / OSS</p></div>
-            <span class="arch-arrow">scan</span>
+            <span class="arch-arrow"><svg class="arch-arrow-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg><span class="arch-arrow-label">Submit scan plan</span></span>
             <div class="arch-node highlight-warehouse"><p class="arch-node-name">Warehouse</p><p class="arch-node-role">file inventory + sky coverage + evidence</p></div>
-            <span class="arch-arrow">write</span>
+            <span class="arch-arrow"><svg class="arch-arrow-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg><span class="arch-arrow-label">write</span></span>
             <div class="arch-node"><p class="arch-node-name">ast_* indices</p><p class="arch-node-role">current state in Elasticsearch</p></div>
-            <span class="arch-arrow">query</span>
+            <span class="arch-arrow"><svg class="arch-arrow-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg><span class="arch-arrow-label">query</span></span>
             <div class="arch-node"><p class="arch-node-name">Your application</p><p class="arch-node-role">Assets, or your own code</p></div>
           </div>
         </div>
@@ -100,12 +100,16 @@ limitations under the License.
         <div class="grid-3">
           <article class="card"><h3 class="card-title">Inventory the files</h3><p class="card-desc">One scan walks one source and records every discovered file as a FileAsset with its canonical URI, name, size, and timestamps.</p></article>
           <article class="card"><h3 class="card-title">Extract sky coverage from metadata</h3><p class="card-desc">One extraction mode per scan reads WCS headers, catalog RA/Dec columns, or explicit HEALPix cells. Every result carries its precision: exact, estimated, or entrypoint-only.</p></article>
-          <article class="card"><h3 class="card-title">Publish current state to Elasticsearch</h3><p class="card-desc">Each scan refreshes one CoverageLayer in the ast_* indices. Only ACTIVE layers are queryable; failed scans stay visible with errors and evidence instead of serving stale coverage.</p></article>
+          <article class="card card-publish-state"><h3 class="card-title">Publish current state to Elasticsearch</h3><p class="card-desc">Each scan refreshes one CoverageLayer in the ast_* indices. Only ACTIVE layers are queryable; failed scans stay visible with errors and evidence instead of serving stale coverage.</p></article>
         </div>
         <p>A CoverageLayer groups one survey, release, and product; one scan covers one source, one layer, and one extraction mode. To answer "which files cover this part of the sky", query the indices a scan produced: Assets reads them in production, and the diagnostic Query API lets you try the same lookup.</p>
+        <details class="mode-guide">
+          <summary>了解更多ASA名词</summary>
+          <p>更多ASA名词解释查看 <a href="http://astro.assets.dev.72602.space:32080/terms/" target="_blank" rel="noopener noreferrer">http://astro.assets.dev.72602.space:32080/terms/</a></p>
+        </details>
       </section>
 
-        <section id="capabilities" class="doc-section" aria-labelledby="capabilities-title">
+      <section id="capabilities" class="doc-section" aria-labelledby="capabilities-title" data-title-key="02 / Choose how to read your sky coverage">
         <p class="section-tag">02 / Extraction</p>
         <h2 id="capabilities-title">Choose how to read your sky coverage</h2>
         <div class="grid-2">
@@ -122,10 +126,22 @@ limitations under the License.
         <p>The <code>local</code> connector accepts a directory or single file. S3-compatible and OSS endpoints use the AWS SDK adapter, with canonical <code>s3://bucket/key</code> or <code>oss://bucket/key</code> identities. Supply a signing region when required. Credential references point to environment variables or mounted files; never put credential values in a plan.</p>
         <div class="callout callout-info"><p><strong>Databases (JDBC) are planned, not supported yet.</strong> The current ScanPlan accepts local, S3-compatible, and OSS sources only. Until a JDBC connector lands, scan catalog databases with Workspace, whose connectors include JDBC and write to its own index.</p></div>
         <div class="callout callout-info"><p><strong>Metadata only.</strong> FITS extraction reads headers, and catalogs expose configured spatial columns. Warehouse never reads or copies scientific image, spectrum, or cube arrays. Unsupported formats remain discovered FileAssets with evidence and no invented coverage.</p></div>
-        <p>Declare modality explicitly: <code>image</code>, <code>spectrum</code>, <code>cube</code>, <code>catalog</code>, <code>timeseries</code>, <code>visibility</code>, <code>event</code>, or <code>other</code>.</p>
+        <div class="modality-legend">
+          <p>Declare modality explicitly:</p>
+          <ul class="modality-list">
+            <li class="modality-item"><svg class="modality-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="m3 16 5-5 4 4 3-3 6 6"></path></svg><code>image</code></li>
+            <li class="modality-item"><svg class="modality-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h3l2-6 4 12 2-6h7"></path></svg><code>spectrum</code></li>
+            <li class="modality-item"><svg class="modality-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 9 5-9 5-9-5 9-5Z"></path><path d="m3 12 9 5 9-5"></path><path d="m3 17 9 5 9-5"></path></svg><code>cube</code></li>
+            <li class="modality-item"><svg class="modality-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 10h18M9 4v16M15 4v16"></path></svg><code>catalog</code></li>
+            <li class="modality-item"><svg class="modality-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"></path><path d="m7 15 3-3 3 2 5-6"></path></svg><code>timeseries</code></li>
+            <li class="modality-item"><svg class="modality-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5Z"></path><circle cx="12" cy="12" r="2.5"></circle></svg><code>visibility</code></li>
+            <li class="modality-item"><svg class="modality-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"></path></svg><code>event</code></li>
+            <li class="modality-item"><svg class="modality-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="3"></circle><circle cx="16" cy="8" r="3"></circle><circle cx="8" cy="16" r="3"></circle><circle cx="16" cy="16" r="3"></circle></svg><code>other</code></li>
+          </ul>
+        </div>
       </section>
 
-      <section id="submit" class="doc-section" aria-labelledby="submit-title">
+      <section id="submit" class="doc-section" aria-labelledby="submit-title" data-title-key="03 / Run a scan, then check the result">
         <p class="section-tag">03 / Submission</p>
         <h2 id="submit-title">Run a scan, then check the result</h2>
         <p>Connecting to an existing deployment? Ask its operator for your request namespace, source and evidence volumes, scanner image, and Elasticsearch settings. Submit scans through Kubernetes ScanRequest. The read-only Query API is used later to look up files.</p>
@@ -174,6 +190,97 @@ java -jar scanner-cli/target/scanner-cli-0.1.0-SNAPSHOT-runner.jar \
   --plan /path/to/scan-plan.json --memory</code></pre>
         </div>
         <div class="callout callout-warning"><p><strong>Memory diagnostics do not persist searchable state.</strong> Evidence is optional only with <code>--memory</code>; if declared, use a writable output path. To persist, omit <code>--memory</code>, configure the new Warehouse Elasticsearch endpoint and credential references, provision the strict indices, and retain evidence. Scanner startup does not create or recreate indices.</p></div>
+
+        <h3>Mode-specific extraction parameters</h3>
+        <p>Choose exactly one mode per ScanPlan. The required fields are different; use one alternative below and do not combine mode-specific settings.</p>
+        <div class="parameter-table-wrap" tabindex="0">
+          <table class="parameter-table">
+            <thead>
+              <tr>
+                <th scope="col">Mode</th>
+                <th scope="col">Required extraction fields</th>
+                <th scope="col">Fields to omit</th>
+                <th scope="col">Coverage produced</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr id="mode-parameters-fits-wcs">
+                <th scope="row"><code>fits-wcs</code></th>
+                <td><code>extraction.mode</code><br><code>extraction.outputOrder</code></td>
+                <td><code>extraction.catalog</code></td>
+                <td><code>estimated</code> sampled footprint</td>
+              </tr>
+              <tr id="mode-parameters-fits-header-position">
+                <th scope="row"><code>fits-header-position</code></th>
+                <td><code>extraction.mode</code><br><code>extraction.outputOrder</code></td>
+                <td><code>extraction.catalog</code></td>
+                <td><code>entrypoint-only</code> header position evidence</td>
+              </tr>
+              <tr id="mode-parameters-catalog-radec">
+                <th scope="row"><code>catalog-radec</code></th>
+                <td><code>extraction.mode</code><br><code>extraction.outputOrder</code><br><code>extraction.catalog.raColumn</code><br><code>extraction.catalog.decColumn</code></td>
+                <td><code>extraction.catalog.healpixColumn</code>, <code>extraction.catalog.healpixOrder</code>, and <code>extraction.catalog.healpixOrderColumn</code></td>
+                <td><code>exact</code> occupancy cells; <code>layer.coverageRole</code> must be <code>occupancy</code></td>
+              </tr>
+              <tr id="mode-parameters-catalog-healpix">
+                <th scope="row"><code>catalog-healpix</code></th>
+                <td><code>extraction.mode</code><br><code>extraction.catalog.healpixColumn</code><br>Exactly one of <code>healpixOrder</code> or <code>healpixOrderColumn</code></td>
+                <td><code>extraction.outputOrder</code>, <code>extraction.catalog.raColumn</code>, and <code>extraction.catalog.decColumn</code></td>
+                <td><code>exact</code> source cells; preserve explicit NESTED order/ipix</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="parameter-note">The blocks below are minimum extraction alternatives, not fields to merge into one plan. For <code>catalog-healpix</code>, replace fixed <code>healpixOrder</code> with <code>healpixOrderColumn</code> when each row stores its source order; never submit both.</p>
+        <div class="mode-parameter-grid">
+          <article class="mode-parameter" aria-labelledby="fits-wcs-parameters-title">
+            <h4 id="fits-wcs-parameters-title"><code>fits-wcs</code></h4>
+            <p>Use the required output order for sampled WCS rasterization.</p>
+            <pre class="mode-parameter-code"><code class="language-json">{
+  "extraction": {
+    "mode": "fits-wcs",
+    "outputOrder": 8
+  }
+}</code></pre>
+          </article>
+          <article class="mode-parameter" aria-labelledby="fits-header-position-parameters-title">
+            <h4 id="fits-header-position-parameters-title"><code>fits-header-position</code></h4>
+            <p>Use the required output order for explicit header position evidence.</p>
+            <pre class="mode-parameter-code"><code class="language-json">{
+  "extraction": {
+    "mode": "fits-header-position",
+    "outputOrder": 8
+  }
+}</code></pre>
+          </article>
+          <article class="mode-parameter" aria-labelledby="catalog-radec-parameters-title">
+            <h4 id="catalog-radec-parameters-title"><code>catalog-radec</code></h4>
+            <p>Provide the catalog columns and set the layer role to <code>occupancy</code>.</p>
+            <pre class="mode-parameter-code"><code class="language-json">{
+  "extraction": {
+    "mode": "catalog-radec",
+    "outputOrder": 8,
+    "catalog": {
+      "raColumn": "ra",
+      "decColumn": "dec"
+    }
+  }
+}</code></pre>
+          </article>
+          <article class="mode-parameter" aria-labelledby="catalog-healpix-parameters-title">
+            <h4 id="catalog-healpix-parameters-title"><code>catalog-healpix</code></h4>
+            <p>Preserve source cells with one fixed order or one per-row order column.</p>
+            <pre class="mode-parameter-code"><code class="language-json">{
+  "extraction": {
+    "mode": "catalog-healpix",
+    "catalog": {
+      "healpixColumn": "pixel",
+      "healpixOrder": 8
+    }
+  }
+}</code></pre>
+          </article>
+        </div>
 
         <h3>2. Submit a namespaced ScanRequest</h3>
         <p>For a deployed Warehouse, submit the plan as a ScanRequest using the example below. Ask your operator to provide an evidence PVC and a Bound source PVC labelled <code>atlas.zhejianglab.org/scanner-source=true</code> in <code>atlas-warehouse</code>. The source claim's <code>catalogs</code> subdirectory is mounted read-only at <code>/data</code>.</p>
@@ -246,8 +353,8 @@ kubectl -n atlas-warehouse logs "job/${JOB_NAME}" --follow</code></pre>
         <p>Submission is asynchronous: accepting the request does not mean the scan has finished. Follow its status until SUCCEEDED, FAILED, or INVALID. If it remains WAITING, inspect the status message. Your namespace must be enabled by the deployment operator; all volume and Secret references belong in that same namespace.</p>
       </section>
 
-      <section id="query" class="doc-section" aria-labelledby="query-title">
-        <p class="section-tag">04 / Reverse lookup</p>
+      <section id="query" class="doc-section" aria-labelledby="query-title" data-title-key="04 / Ask for cells. Receive file candidates.">
+        <p class="section-tag">04 / <span>Reverse lookup</span></p>
         <h2 id="query-title">Ask for cells. Receive file candidates.</h2>
         <p class="section-lead">Already have an indexed layer? Send its ID and the sky cells you want to search to the diagnostic Query API below. Ask your operator for its address if it is enabled. Applications can also read Warehouse Elasticsearch directly; this is how Assets performs production lookups.</p>
         <div class="code-box">
@@ -290,7 +397,7 @@ curl --fail-with-body --get "$QUERY_API/v2/files/healpix" \
         <p>An empty items list means no candidate files matched this query on available layers. A layer-state error means the layer cannot currently be queried. Handle those as different outcomes in your application.</p>
       </section>
 
-      <section id="indices" class="doc-section" aria-labelledby="indices-title">
+      <section id="indices" class="doc-section" aria-labelledby="indices-title" data-title-key="05 / Where to find layers, files, and coverage">
         <p class="section-tag">05 / Storage contract</p>
         <h2 id="indices-title">Where to find layers, files, and coverage</h2>
         <p class="section-lead">Reading Elasticsearch directly? Start with the layer to check its state and available orders, find matching coverage cells, then resolve their file IDs. The three indices below hold the current scan results.</p>
@@ -301,9 +408,9 @@ curl --fail-with-body --get "$QUERY_API/v2/files/healpix" \
         </ol>
         <p>For production reads, follow the index contract linked below, including its state checks and result limits. The explorer shows field names and sample documents; it does not connect to your Elasticsearch.</p>
         <div class="grid-3">
-          <article class="card"><h3 class="card-title">CoverageLayer</h3><p class="card-desc"><code>ast_layer_index_v1</code> holds survey/release/product identity, modality, role, entrypoint, state, lease, snapshot hash, available orders, counts, and errors. Document ID: <code>layer_id</code>.</p></article>
-          <article class="card"><h3 class="card-title">FileAsset</h3><p class="card-desc"><code>ast_file_index_v1</code> holds canonical URI, name/type, parent URI, size, and timestamps. Document ID: SHA-256 of the canonical source URI. No raw data, modality, or layer-owned coverage list.</p></article>
-          <article class="card"><h3 class="card-title">SpatialCoverage</h3><p class="card-desc"><code>ast_coverage_index_v1</code> associates a layer and file with an explicit cell, method, role, modality, and precision. Identity is deterministic over layer, file, order, cell, and role.</p></article>
+          <article class="card"><h3 class="card-title card-title-with-icon"><svg class="card-title-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 9 5-9 5-9-5 9-5Z"></path><path d="m3 12 9 5 9-5"></path><path d="m3 17 9 5 9-5"></path></svg><span>CoverageLayer</span></h3><p class="card-desc"><code>ast_layer_index_v1</code> holds survey/release/product identity, modality, role, entrypoint, state, lease, snapshot hash, available orders, counts, and errors. Document ID: <code>layer_id</code>.</p></article>
+          <article class="card"><h3 class="card-title card-title-with-icon"><svg class="card-title-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path><path d="M14 2v6h6M8 13h8M8 17h5"></path></svg><span>FileAsset</span></h3><p class="card-desc"><code>ast_file_index_v1</code> holds canonical URI, name/type, parent URI, size, and timestamps. Document ID: SHA-256 of the canonical source URI. No raw data, modality, or layer-owned coverage list.</p></article>
+          <article class="card"><h3 class="card-title card-title-with-icon"><svg class="card-title-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M3 15h18M9 3v18M15 3v18"></path></svg><span>SpatialCoverage</span></h3><p class="card-desc"><code>ast_coverage_index_v1</code> associates a layer and file with an explicit cell, method, role, modality, and precision. Identity is deterministic over layer, file, order, cell, and role.</p></article>
         </div>
         <div class="schema-container">
           <div class="schema-nav" role="group" aria-label="Choose an index schema">
@@ -318,15 +425,17 @@ curl --fail-with-body --get "$QUERY_API/v2/files/healpix" \
         <p>Canonical sources: <a href="https://github.com/Astro-Survey-Atlas/Warehouse/tree/main/contracts/index">strict Elasticsearch templates</a> and <a href="https://github.com/Astro-Survey-Atlas/Warehouse/blob/main/docs/index-contract.md">index identity, write, and read contract</a>.</p>
       </section>
 
-      <section id="semantics" class="doc-section" aria-labelledby="semantics-title">
+      <section id="semantics" class="doc-section" aria-labelledby="semantics-title" data-title-key="06 / How much does a match tell you?">
         <p class="section-tag">06 / Understanding results</p>
         <h2 id="semantics-title">How much does a match tell you?</h2>
-        <p class="section-lead">Coverage always retains its actual ICRS, NESTED HEALPix <code>order/ipix</code>. Coarsening finer data is allowed; expanding coarse coverage into claimed finer precision is not.</p>
+        <p class="section-lead">Every coverage result is stored as <code>HEALPix</code> cells: sky pixels identified by <code>ICRS</code>, an explicit <code>NESTED</code> order, and an <code>ipix</code>. The precision label describes how those cells were obtained; response truncation is separate.</p>
+        <p>Three precision levels describe the evidence behind the stored HEALPix pixels:</p>
         <div class="grid-3">
-          <article class="mode-card"><h3 class="card-title">exact</h3><p class="card-desc">Exact cell assignment for the represented input, such as catalog occupancy. It does not turn a cell intersection into an exact geometry claim.</p></article>
-          <article class="mode-card"><h3 class="card-title">estimated</h3><p class="card-desc">Approximate coverage, including sampled WCS rasterization. Preserve that qualification in reverse-lookup results.</p></article>
-          <article class="mode-card"><h3 class="card-title">entrypoint-only</h3><p class="card-desc">Limited positional or entrypoint evidence, not a full footprint. If only an official URL is known, Assets reads the layer entrypoint; no synthetic file or coverage edge is created.</p></article>
+          <article class="mode-card"><h3 class="card-title">exact</h3><p class="card-desc">The input identifies the represented HEALPix pixels directly, or a catalog coordinate is deterministically assigned to an occupancy pixel. This is exact cell evidence, not an exact polygon boundary.</p></article>
+          <article class="mode-card"><h3 class="card-title">estimated</h3><p class="card-desc">The pixels are sampled or inferred from metadata, such as WCS rasterization. They are useful coverage candidates, but they are not an exact footprint geometry.</p></article>
+          <article class="mode-card"><h3 class="card-title">entrypoint-only</h3><p class="card-desc">Only a product location or explicit position is known. This is not a file footprint and does not create synthetic HEALPix cells or a file-level coverage edge.</p></article>
         </div>
+        <p>Finer source pixels may be coarsened to a lower order. A coarse pixel is never expanded into invented finer pixels. This rule is independent from response truncation.</p>
         <h3>Check availability before showing results</h3>
         <div class="grid-3">
           <article class="card"><h4 class="card-title"><span class="status-pill status-updating">UPDATING</span></h4><p class="card-desc">A scan is refreshing this layer. Show it as temporarily unavailable and try again later; this state does not mean the region has no data.</p></article>
