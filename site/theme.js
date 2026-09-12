@@ -24,8 +24,9 @@
       ? (chinese ? '夜间模式' : 'Dark mode')
       : (chinese ? '白天模式' : 'Light mode');
     button.setAttribute('aria-label', button.textContent);
-    document.querySelector('.brand-logo').src = `assets/logo.svg${theme === 'dark' ? '#night' : ''}`;
-    document.querySelector('link[rel="icon"]').href = `assets/logo.svg${theme === 'dark' ? '#night' : ''}`;
+    const mark = theme === 'dark' ? 'assets/asa-mark-dark.svg' : 'assets/asa-mark.svg';
+    document.querySelector('.brand-logo').src = mark;
+    document.querySelector('link[rel="icon"]').href = mark;
     button.hidden = false;
   }
   button.addEventListener('click', () => {

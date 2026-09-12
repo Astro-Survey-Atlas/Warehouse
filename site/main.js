@@ -115,7 +115,7 @@
       <p><code>${schema.identity}</code></p>
       <p>Strict mapping: unknown fields are rejected. All keyword fields use ignore_above: 2048.
       The v1 suffix versions mappings, not scan runs. Select a field to inspect its example.</p>
-      <div style="overflow-x:auto">
+      <div class="schema-table-wrap" tabindex="0">
         <table class="schema-table">
           <thead><tr><th scope="col">Field</th><th scope="col">Mapped type</th><th scope="col">Description</th></tr></thead>
           <tbody>${schema.fields.map(([name, type, description]) => `
@@ -125,9 +125,11 @@
         </table>
       </div>
       <p id="schema-explanation" class="callout callout-info" role="status" aria-live="polite"></p>
-      <div class="code-header"><span>Illustrative document (not live data)</span>
-        <button type="button" class="copy-btn" data-copy-target="schema-sample">Copy JSON</button></div>
-      <pre class="code-content" style="max-width:100%;overflow-x:auto"><code id="schema-sample" class="language-json"></code></pre>`;
+      <div class="code-box">
+        <div class="code-header"><span>Illustrative document (not live data)</span>
+          <button type="button" class="copy-btn" data-copy-target="schema-sample">Copy JSON</button></div>
+        <pre class="code-content" tabindex="0"><code id="schema-sample" class="language-json"></code></pre>
+      </div>`;
 
     const sample = container.querySelector("#schema-sample");
     const values = Object.fromEntries(schema.fields.map(([name, , , value]) => [name, value]));
@@ -152,8 +154,6 @@
       sample.querySelectorAll(".schema-line").forEach(line => {
         const selected = line.dataset.sampleField === name;
         line.classList.toggle("highlighted", selected);
-        line.style.backgroundColor = selected ? "var(--brand-magenta-glow, #613047)" : "";
-        line.style.fontWeight = selected ? "700" : "";
       });
       container.querySelector("#schema-explanation").textContent = `${field[0]} (${field[1]}): ${t(field[2])}`;
     }

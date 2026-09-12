@@ -308,7 +308,7 @@
     "Choose exactly one mode per ScanPlan. The required fields are different; use one alternative below and do not combine mode-specific settings.": "每个 ScanPlan 只能选择一种模式。各模式所需字段不同；请从下方选择一种方案，不要混合不同模式的设置。",
     "Mode": "模式",
     "Required extraction fields": "必填提取字段",
-    "Fields to omit": "应省略的字段",
+    "Fields to omit": "能省略的字段",
     "Coverage produced": "产生的覆盖",
     "sampled footprint": "采样覆盖轮廓",
     "header position evidence": "头位置证据",

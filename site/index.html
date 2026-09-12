@@ -17,7 +17,7 @@ limitations under the License.
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Warehouse technical documentation: scan local, S3-compatible, and OSS astronomical sources into Elasticsearch file and sky-coverage indices.">
   <title>Warehouse | Astro Survey Atlas</title>
-  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/asa-mark.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <script src="i18n.js" defer></script>
   <script src="main.js" defer></script>
@@ -28,7 +28,7 @@ limitations under the License.
   <header class="site-header">
     <div class="header-inner">
       <a class="brand-wrap" href="#overview" aria-label="Warehouse documentation home">
-        <img class="brand-logo" src="assets/logo.svg" alt="" width="32" height="32">
+        <img class="brand-logo" src="assets/asa-mark.svg" alt="" width="72" height="28">
         <span class="brand-text">Warehouse <span class="brand-badge">Docs</span></span>
       </a>
       <nav aria-label="Primary navigation">
@@ -77,8 +77,8 @@ limitations under the License.
 
     <main id="main-content" class="main-content" tabindex="-1">
       <section id="overview" class="hero doc-section" aria-labelledby="overview-title" data-title-key="01 / What Warehouse does with your data">
-        <p class="hero-pill">Astro Survey Atlas / Scan engine</p>
-        <h1 id="overview-title" class="hero-title">Scan your data sources.<br>Build a searchable sky index.</h1>
+        <p class="hero-pill"><span class="pill-dot" aria-hidden="true"></span>Astro Survey Atlas / Scan engine</p>
+        <h1 id="overview-title" class="hero-title">Scan your data sources.<br><span>Build a searchable sky index.</span></h1>
         <p class="hero-desc">Warehouse is a scanning tool for astronomical data. Point it at a local directory, an S3-compatible bucket, or OSS storage. It inventories every file it finds, extracts each file's sky coverage from supported metadata, and writes the current results into Elasticsearch ast_* indices, retaining evidence for every scan. It never reads or copies scientific arrays.</p>
         <p class="hero-desc">Once a scan lands in the index, the sky-position questions come from your application: which files cover this region, where do they live, and why did they match. Assets asks this in production; your code can query the same indices.</p>
         <div class="hero-buttons">
@@ -87,13 +87,13 @@ limitations under the License.
         </div>
         <div class="arch-diagram" aria-label="Scan data flow">
           <div class="arch-nodes">
-            <div class="arch-node"><p class="arch-node-name">Your data source</p><p class="arch-node-role">local / S3-compatible / OSS</p></div>
+            <div class="arch-node"><span class="arch-node-icon icon-source" aria-hidden="true"></span><p class="arch-node-name">Your data source</p><p class="arch-node-role">local / S3-compatible / OSS</p></div>
             <span class="arch-arrow"><svg class="arch-arrow-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg><span class="arch-arrow-label">Submit scan plan</span></span>
-            <div class="arch-node highlight-warehouse"><p class="arch-node-name">Warehouse</p><p class="arch-node-role">file inventory + sky coverage + evidence</p></div>
+            <div class="arch-node highlight-warehouse"><span class="arch-node-icon icon-core" aria-hidden="true"></span><p class="arch-node-name">Warehouse</p><p class="arch-node-role">file inventory + sky coverage + evidence</p></div>
             <span class="arch-arrow"><svg class="arch-arrow-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg><span class="arch-arrow-label">write</span></span>
-            <div class="arch-node"><p class="arch-node-name">ast_* indices</p><p class="arch-node-role">current state in Elasticsearch</p></div>
+            <div class="arch-node"><span class="arch-node-icon icon-grid" aria-hidden="true"></span><p class="arch-node-name">ast_* indices</p><p class="arch-node-role">current state in Elasticsearch</p></div>
             <span class="arch-arrow"><svg class="arch-arrow-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg><span class="arch-arrow-label">query</span></span>
-            <div class="arch-node"><p class="arch-node-name">Your application</p><p class="arch-node-role">Assets, or your own code</p></div>
+            <div class="arch-node"><span class="arch-node-icon icon-app" aria-hidden="true"></span><p class="arch-node-name">Your application</p><p class="arch-node-role">Assets, or your own code</p></div>
           </div>
         </div>
         <h2>What Warehouse does with your data</h2>
